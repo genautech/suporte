@@ -1,0 +1,18 @@
+{
+  "status": "init",
+  "type": "frontend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:3000/",
+  "loginUser": "admin@yoobe.co",
+  "loginPassword": "123456",
+  "executionArgs": {
+    "projectName": "suporte",
+    "projectPath": "/Users/genautech/suporte",
+    "testIds": [],
+    "additionalInstruction": "Focus on testing that the login screen loads correctly. Verify:\n1. Homepage loads and displays correctly\n2. \"Acessar Portal do Cliente\" button is visible and clickable\n3. Login form appears after clicking the button\n4. Email input field is visible and functional\n5. \"Enviar Código de Acesso\" button is visible\n6. All UI elements render properly without errors",
+    "envs": {
+      "API_KEY": "sk-user-vXe5oLyywLaraNJjD29LpwN7lf-yIpEQeW6qpvoJOjm9DeO-B_8JEJXH6uZOAIK7U1P9Rilv1wOaJlDvBOFC0B5ej7gpEtOl2P23bHV6HVRoj4eU8vpIOR3suryv-CzkubI"
+    }
+  },
+  "proxy": "http://be3899f0-6f7c-4677-b133-47d0f828f1d2:KbdMZx7ZzHmpSsAov6e06sbEORPhxAbd@tun.testsprite.com:8080"
+}

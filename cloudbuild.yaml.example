@@ -1,0 +1,20 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'VITE_GEMINI_API_KEY=${_VITE_GEMINI_API_KEY}'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/suporte-lojinha:latest'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/suporte-lojinha:latest']
+
+# ⚠️ IMPORTANTE: Substitua 'SUA_CHAVE_AQUI' pela chave real da API Gemini
+# Para produção, considere usar Secret Manager do GCP
+substitutions:
+  _VITE_GEMINI_API_KEY: 'SUA_CHAVE_AQUI'
+
+images:
+  - 'gcr.io/$PROJECT_ID/suporte-lojinha:latest'
+

@@ -1,0 +1,170 @@
+{
+  "meta": {
+    "project": "Suporte Lojinha - Plataforma de Suporte ao Cliente",
+    "date": "2025-11-04",
+    "prepared_by": "Gerado por Assistente de Documentação"
+  },
+  "product_overview": "Plataforma de suporte ao cliente para lojinha com autenticação por código via email, chatbot com AI, rastreamento de pedidos, sistema de tickets e painel administrativo integrado.",
+  "core_goals": [
+    "Fornecer autenticação segura e simples para clientes e administradores via código enviado por email ou SMS.",
+    "Permitir rastreamento detalhado e seguro de pedidos integrando a API da Cubbo com validação de acesso por email e código de pedido.",
+    "Oferecer um chatbot inteligente baseado em Google Gemini AI para atendimento e suporte aos clientes.",
+    "Implementar sistema completo de criação, visualização e gerenciamento de tickets de suporte.",
+    "Disponibilizar painel administrativo para configuração das integrações, gerenciamento de tickets e monitoramento do sistema com controle de credenciais API.",
+    "Garantir segurança e controle de acesso rigorosos para proteger dados sensíveis dos clientes."
+  ],
+  "key_features": [
+    "Autenticação via Firebase usando código de 4 dígitos enviado por email e/ou SMS, com geração e validação segura dos códigos.",
+    "Proxy de autenticação para chamadas à API Cubbo, resolvendo problemas de CORS e realizando autenticação OAuth com credenciais configuráveis via Cloud Run.",
+    "Busca flexível e segura de pedidos por código ou email no chatbot, incluindo validação que garante que nenhum pedido seja acessado indevidamente.",
+    "Sistema de tickets para suporte integrando criação, listagem, detalhamento e gerenciamento via dashboard do usuário e administrativo.",
+    "Configuração de variáveis de ambiente para integração com serviços externos como Postmark para envio de emails e API Cubbo para rastreamento.",
+    "Interface em React com Vite, estilizada usando TailwindCSS e DaisyUI, contendo dashboards para usuário e administrador.",
+    "Portal inicial com opções claras para login de clientes e administradores, incluindo fluxo de autenticação adequado.",
+    "Monitoramento e logs dos serviços Cloud Run para garantia operacional e correção rápida de problemas."
+  ],
+  "user_flow_summary": [
+    "Usuário acessa a aplicação na homepage e escolhe o portal do cliente ou admin.",
+    "Cliente insere seu email e solicita código de acesso; recebe código via email e insere na tela para autenticação.",
+    "Após autenticação, cliente acessa dashboard com chatbot, visualização de pedidos e tickets de suporte.",
+    "Cliente pode buscar pedidos pelo código ou email, com validação automática garantindo acesso autorizado.",
+    "Usuário cliente pode abrir, visualizar e responder tickets de suporte pelo dashboard.",
+    "Administrador faz login via painel dedicado, acessa painel administrativo com listagem de pedidos, tickets e configurações.",
+    "Administrador gerencia configurações de APIs, incluindo inserção de credenciais Cubbo e store ID, e testa conexões enquanto monitora status do sistema.",
+    "Todos os dados sensíveis, como credenciais e tokens, são configurados em ambiente seguro e não expostos no frontend.",
+    "O chatbot utiliza Google Gemini AI para entender perguntas do cliente e realiza chamadas ao serviço de rastreamento com validação da API Cubbo via proxy autenticação."
+  ],
+  "validation_criteria": [
+    "Autenticação deve permitir envio e validação de códigos de 4 dígitos via email, funcionando sem erros e capturando casos de códigos expirados ou inválidos.",
+    "O proxy do Cubbo Auth Proxy deve responder a requisições, incluindo preflight OPTIONS, com cabeçalhos CORS adequados e retornar token válido se credenciais corretas estiverem configuradas.",
+    "Pedidos buscados pelo cliente devem ser validados pela associação do email logado com o email do pedido, retornando erro se não autorizado.",
+    "Painel administrativo deve permitir configuração correta de credenciais Cubbo e Store ID, testando conexão e refletindo estado atualizado.",
+    "Emails gerados pelo sistema devem ser enviados via serviço Postmark utilizando o proxy configurado, sem falhas e com logs adequados.",
+    "Todos os domínios utilizados devem estar autorizados no Firebase Authentication para evitar erros de domínio não permitido.",
+    "Logs e mensagens de erro devem ser claros e úteis para facilitar a correção de problemas nas integrações.",
+    "A aplicação deve rodar localmente com variáveis de ambiente configuradas e ser capaz de ser deployada no Cloud Run com os serviços auxiliares funcionando corretamente."
+  ],
+  "code_summary": {
+    "tech_stack": [
+      "TypeScript",
+      "React",
+      "Vite",
+      "Firebase",
+      "TailwindCSS",
+      "DaisyUI",
+      "Google Gemini AI"
+    ],
+    "features": [
+      {
+        "name": "Authentication",
+        "description": "Sistema de autenticação com Firebase (Email Link e Phone SMS)",
+        "files": [
+          "services/authService.ts",
+          "components/UserLogin.tsx",
+          "components/AdminLogin.tsx",
+          "components/AuthModal.tsx",
+          "firebase.ts"
+        ]
+      },
+      {
+        "name": "HomePage",
+        "description": "Página inicial com opções de login para cliente e admin",
+        "files": [
+          "components/HomePage.tsx",
+          "App.tsx"
+        ]
+      },
+      {
+        "name": "UserDashboard",
+        "description": "Dashboard do cliente com chatbot e visualização de tickets",
+        "files": [
+          "components/UserDashboard.tsx",
+          "components/Chatbot.tsx",
+          "components/OrderList.tsx",
+          "components/ProfileModal.tsx"
+        ]
+      },
+      {
+        "name": "AdminDashboard",
+        "description": "Dashboard administrativo com gerenciamento de tickets, configurações e busca de pedidos",
+        "files": [
+          "components/AdminDashboard.tsx",
+          "components/AdminOrders.tsx",
+          "components/AdminTraining.tsx",
+          "components/SystemStatus.tsx",
+          "components/TicketDetailModal.tsx"
+        ]
+      },
+      {
+        "name": "Chatbot",
+        "description": "Chatbot integrado com Google Gemini AI para atendimento ao cliente",
+        "files": [
+          "components/Chatbot.tsx",
+          "services/geminiService.ts"
+        ]
+      },
+      {
+        "name": "Order Tracking",
+        "description": "Sistema de rastreamento de pedidos integrado com API Cubbo",
+        "files": [
+          "services/supportService.ts",
+          "components/OrderList.tsx",
+          "components/AdminOrders.tsx"
+        ]
+      },
+      {
+        "name": "Support Tickets",
+        "description": "Sistema de chamados de suporte com criação e gerenciamento",
+        "files": [
+          "components/SupportTicketForm.tsx",
+          "components/TicketForm.tsx",
+          "components/TicketDetailModal.tsx",
+          "services/supportService.ts"
+        ]
+      },
+      {
+        "name": "Exchange Form",
+        "description": "Formulário para iniciar processo de troca de produtos",
+        "files": [
+          "components/ExchangeForm.tsx"
+        ]
+      },
+      {
+        "name": "Support Service",
+        "description": "Serviço principal com integração à API Cubbo, Firebase Firestore e Postmark",
+        "files": [
+          "services/supportService.ts"
+        ]
+      },
+      {
+        "name": "API Configuration",
+        "description": "Configuração de APIs externas (Cubbo, Postmark) no painel admin",
+        "files": [
+          "components/AdminTraining.tsx",
+          "services/supportService.ts"
+        ]
+      },
+      {
+        "name": "Cubbo Auth Proxy",
+        "description": "Proxy de autenticação e API para Cubbo (deployado no Cloud Run)",
+        "files": [
+          "cubbo-auth-proxy/index.js"
+        ]
+      },
+      {
+        "name": "Postmark Email Proxy",
+        "description": "Proxy para envio de emails via Postmark (deployado no Cloud Run)",
+        "files": [
+          "postmark-email-proxy/index.js"
+        ]
+      },
+      {
+        "name": "Type Definitions",
+        "description": "Definições de tipos TypeScript para o projeto",
+        "files": [
+          "types.ts"
+        ]
+      }
+    ]
+  }
+}

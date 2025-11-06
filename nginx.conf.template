@@ -1,0 +1,65 @@
+# Arquivo: nginx.conf.template
+
+server {
+    # NGINX irá escutar na porta definida pela variável de ambiente '$PORT'.
+    # O Google Cloud Run injetará o valor correto (geralmente 8080) aqui.
+    # A sintaxe ${PORT} é usada pelo utilitário 'envsubst' que configuramos no Dockerfile.
+    listen ${PORT};
+
+    # Define a pasta raiz onde os arquivos da sua aplicação React estão dentro do contêiner.
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+
+    # Headers de segurança e CORS
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Configuração crucial para uma Single Page Application (SPA) como o React.
+    # Se uma URL solicitada não corresponder a um arquivo ou diretório físico
+    # (por exemplo, /meus-chamados), ele redireciona a requisição para o index.html.
+    # Isso permite que o sistema de rotas do React assuma o controle e exiba a
+    # página correta, em vez do NGINX retornar um erro 404 "Not Found".
+    location / {
+        try_files $uri $uri/ /index.html;
+        
+        # Headers para permitir que o React carregue corretamente
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+    }
+
+    # Configuração para arquivos estáticos (assets do Vite)
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # Opcional, mas recomendado:
+    # Define como o navegador deve fazer cache de arquivos estáticos (imagens, CSS, JS).
+    # Isso melhora a performance para usuários que retornam ao site.
+    location ~* \.(?:ico|css|js|gif|jpe?g|png|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # Configuração para evitar problemas com arquivos não encontrados
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    # Configuração para evitar problemas com robots.txt
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+    }
+
+    # Gzip compression para melhor performance
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml+rss application/json application/javascript;
+}

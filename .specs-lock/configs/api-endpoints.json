@@ -1,0 +1,46 @@
+{
+  "_comment": "CONFIGURAÇÃO CRÍTICA - NÃO MODIFICAR SEM ATUALIZAR docs/specs/04-apis.md",
+  "_last_updated": "2025-11-05",
+  "_version": "1.0.0",
+  "services": {
+    "main": {
+      "name": "suporte-lojinha",
+      "url": "https://suporte-lojinha-409489811769.southamerica-east1.run.app",
+      "region": "southamerica-east1"
+    },
+    "cubboAuthProxy": {
+      "name": "cubbo-auth-proxy",
+      "url": "https://cubbo-auth-proxy-409489811769.southamerica-east1.run.app",
+      "region": "southamerica-east1",
+      "endpoint": "/",
+      "method": "POST"
+    },
+    "postmarkEmailProxy": {
+      "name": "postmark-email-proxy",
+      "url": "TBD",
+      "region": "southamerica-east1",
+      "endpoint": "/",
+      "method": "POST"
+    }
+  },
+  "externalApis": {
+    "cubbo": {
+      "baseUrl": "https://api.cubbo.com",
+      "authEndpoint": "/v1/auth/token",
+      "ordersEndpoint": "/v1/orders",
+      "authentication": "OAuth 2.0 Client Credentials"
+    },
+    "gemini": {
+      "baseUrl": "https://generativelanguage.googleapis.com",
+      "model": "gemini-2.5-flash",
+      "authentication": "API Key"
+    },
+    "firebase": {
+      "projectId": "suporte-7e68b",
+      "authDomain": "suporte-7e68b.firebaseapp.com"
+    }
+  }
+}
+
+
+

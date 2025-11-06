@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Regras padrão - permitir leitura/escrita autenticada
+    // Ajuste estas regras conforme necessário para sua aplicação
+    
+    // Tickets - usuários podem ler/escrever seus próprios tickets
+    match /tickets/{ticketId} {
+      allow read: if request.auth != null && 
+                     (resource.data.userId == request.auth.token.email || 
+                      request.auth.token.admin == true);
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+                              (resource.data.userId == request.auth.token.email || 
+                               request.auth.token.admin == true);
+    }
+    
+    // FAQ - todos podem ler, apenas admins podem escrever
+    match /faq/{faqId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Knowledge Base - todos podem ler, apenas admins podem escrever
+    match /knowledgeBase/{kbId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Conversations - usuários podem ler/escrever suas próprias conversas
+    match /conversations/{conversationId} {
+      allow read, write: if request.auth != null && 
+                           (resource.data.userId == request.auth.token.email || 
+                            request.auth.token.admin == true);
+      allow create: if request.auth != null;
+    }
+    
+    // Auth Codes - apenas leitura/escrita autenticada
+    match /authCodes/{codeId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // API Configs - apenas admins
+    match /apiConfigs/{configId} {
+      allow read, write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Orders - usuários podem ler seus próprios pedidos
+    match /orders/{orderId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Default: negar acesso
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

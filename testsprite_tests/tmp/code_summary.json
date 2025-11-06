@@ -1,0 +1,124 @@
+{
+  "tech_stack": [
+    "TypeScript",
+    "React",
+    "Vite",
+    "Firebase",
+    "TailwindCSS",
+    "DaisyUI",
+    "Google Gemini AI"
+  ],
+  "features": [
+    {
+      "name": "Authentication",
+      "description": "Sistema de autenticação com Firebase (Email Link e Phone SMS)",
+      "files": [
+        "services/authService.ts",
+        "components/UserLogin.tsx",
+        "components/AdminLogin.tsx",
+        "components/AuthModal.tsx",
+        "firebase.ts"
+      ]
+    },
+    {
+      "name": "HomePage",
+      "description": "Página inicial com opções de login para cliente e admin",
+      "files": [
+        "components/HomePage.tsx",
+        "App.tsx"
+      ]
+    },
+    {
+      "name": "UserDashboard",
+      "description": "Dashboard do cliente com chatbot e visualização de tickets",
+      "files": [
+        "components/UserDashboard.tsx",
+        "components/Chatbot.tsx",
+        "components/OrderList.tsx",
+        "components/ProfileModal.tsx"
+      ]
+    },
+    {
+      "name": "AdminDashboard",
+      "description": "Dashboard administrativo com gerenciamento de tickets, configurações e busca de pedidos",
+      "files": [
+        "components/AdminDashboard.tsx",
+        "components/AdminOrders.tsx",
+        "components/AdminTraining.tsx",
+        "components/SystemStatus.tsx",
+        "components/TicketDetailModal.tsx"
+      ]
+    },
+    {
+      "name": "Chatbot",
+      "description": "Chatbot integrado com Google Gemini AI para atendimento ao cliente",
+      "files": [
+        "components/Chatbot.tsx",
+        "services/geminiService.ts"
+      ]
+    },
+    {
+      "name": "Order Tracking",
+      "description": "Sistema de rastreamento de pedidos integrado com API Cubbo",
+      "files": [
+        "services/supportService.ts",
+        "components/OrderList.tsx",
+        "components/AdminOrders.tsx"
+      ]
+    },
+    {
+      "name": "Support Tickets",
+      "description": "Sistema de chamados de suporte com criação e gerenciamento",
+      "files": [
+        "components/SupportTicketForm.tsx",
+        "components/TicketForm.tsx",
+        "components/TicketDetailModal.tsx",
+        "services/supportService.ts"
+      ]
+    },
+    {
+      "name": "Exchange Form",
+      "description": "Formulário para iniciar processo de troca de produtos",
+      "files": [
+        "components/ExchangeForm.tsx"
+      ]
+    },
+    {
+      "name": "Support Service",
+      "description": "Serviço principal com integração à API Cubbo, Firebase Firestore e Postmark",
+      "files": [
+        "services/supportService.ts"
+      ]
+    },
+    {
+      "name": "API Configuration",
+      "description": "Configuração de APIs externas (Cubbo, Postmark) no painel admin",
+      "files": [
+        "components/AdminTraining.tsx",
+        "services/supportService.ts"
+      ]
+    },
+    {
+      "name": "Cubbo Auth Proxy",
+      "description": "Proxy de autenticação e API para Cubbo (deployado no Cloud Run)",
+      "files": [
+        "cubbo-auth-proxy/index.js"
+      ]
+    },
+    {
+      "name": "Postmark Email Proxy",
+      "description": "Proxy para envio de emails via Postmark (deployado no Cloud Run)",
+      "files": [
+        "postmark-email-proxy/index.js"
+      ]
+    },
+    {
+      "name": "Type Definitions",
+      "description": "Definições de tipos TypeScript para o projeto",
+      "files": [
+        "types.ts"
+      ]
+    }
+  ]
+}
+

@@ -1,0 +1,33 @@
+{
+  "_comment": "CONFIGURAÇÃO CRÍTICA - NÃO MODIFICAR SEM ATUALIZAR docs/specs/01-authentication.md",
+  "_last_updated": "2025-11-05",
+  "_version": "1.0.0",
+  "project": {
+    "id": "suporte-7e68b",
+    "number": "409489811769",
+    "region": "default"
+  },
+  "firebase": {
+    "apiKey": "AIzaSyB7GpJqjqhf-igQEsgK2m6_Rd9L_HKrSTI",
+    "authDomain": "suporte-7e68b.firebaseapp.com",
+    "projectId": "suporte-7e68b",
+    "storageBucket": "suporte-7e68b.firebasestorage.app",
+    "messagingSenderId": "409489811769",
+    "appId": "1:409489811769:web:7c53dba622e5a4a2df60e8",
+    "measurementId": "G-G529W9ESSD"
+  },
+  "auth": {
+    "languageCode": "pt-BR",
+    "methods": ["emailLink", "phone"]
+  },
+  "firestore": {
+    "collections": [
+      "tickets",
+      "apiConfigs",
+      "knowledgeBase"
+    ]
+  }
+}
+
+
+

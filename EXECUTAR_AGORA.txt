@@ -1,0 +1,37 @@
+╔══════════════════════════════════════════════════════════════╗
+║         🚀 DEPLOY DO CUBBO AUTH PROXY                        ║
+╚══════════════════════════════════════════════════════════════╝
+
+Para executar o deploy, siga estes passos:
+
+1️⃣  AUTENTICAR NO GOOGLE CLOUD:
+   gcloud auth login
+
+2️⃣  NAVEGAR PARA A PASTA:
+   cd cubbo-auth-proxy
+
+3️⃣  EXECUTAR DEPLOY:
+
+   Opção A - Com credenciais Cubbo:
+   ./deploy-now.sh seu_client_id seu_client_secret
+
+   Opção B - Sem credenciais (adicionar depois):
+   ./deploy-now.sh
+
+4️⃣  SE PRECISAR ADICIONAR CREDENCIAIS DEPOIS:
+   gcloud run services update cubbo-auth-proxy \
+     --region southamerica-east1 \
+     --set-env-vars CUBBO_CLIENT_ID=seu_id,CUBBO_CLIENT_SECRET=seu_secret
+
+5️⃣  TESTAR:
+   node test-proxy.js
+
+═══════════════════════════════════════════════════════════════
+
+📋 Arquivos criados:
+   ✅ cubbo-auth-proxy/deploy-now.sh - Script simplificado
+   ✅ cubbo-auth-proxy/deploy.sh - Script completo
+   ✅ EXECUTAR_DEPLOY.md - Guia detalhado
+   ✅ DEPLOY_INSTRUCOES.md - Instruções completas
+
+═══════════════════════════════════════════════════════════════

@@ -1,0 +1,410 @@
+[
+  {
+    "id": "TC001",
+    "title": "Cliente - Envio e Validação de Código de Autenticação via Email",
+    "description": "Verificar que o sistema envia um código de 4 dígitos por email ao usuário e permite validação correta para autenticação.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navegar para a página de login do cliente."
+      },
+      {
+        "type": "action",
+        "description": "Inserir email válido e solicitar código de autenticação."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que o código de 4 dígitos é enviado via email usando Postmark."
+      },
+      {
+        "type": "action",
+        "description": "Inserir o código recebido corretamente no campo de validação."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que a autenticação é realizada com sucesso e acesso ao dashboard do cliente é concedido."
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Cliente - Validação de Código Inválido e Expirado",
+    "description": "Verificar que o sistema identifica e rejeita códigos de autenticação inválidos ou expirados.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navegar para a página de login do cliente."
+      },
+      {
+        "type": "action",
+        "description": "Inserir email válido e solicitar código de autenticação."
+      },
+      {
+        "type": "action",
+        "description": "Inserir código incorreto no campo de validação."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que o sistema exibe mensagem de código inválido e nega autenticação."
+      },
+      {
+        "type": "action",
+        "description": "Inserir código expirado no campo de validação."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que o sistema exibe mensagem de código expirado e nega autenticação."
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Administrador - Login via Código de Autenticação",
+    "description": "Verificar o fluxo de login do administrador por código enviado por email com sucesso e erros tratados.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navegar para a página de login do administrador."
+      },
+      {
+        "type": "action",
+        "description": "Inserir email administrativo válido e solicitar código."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar envio do código de 4 dígitos via email pelo Postmark com logs adequados."
+      },
+      {
+        "type": "action",
+        "description": "Inserir código correto para autenticação."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que o administrador é autenticado e redirecionado ao painel administrativo."
+      },
+      {
+        "type": "action",
+        "description": "Inserir código incorreto na autenticação."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar erro de código inválido e acesso negado."
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Proxy Cubbo Auth - Resposta com Cabeçalhos CORS e Token Válido",
+    "description": "Verificar que o proxy Cubbo Auth responde corretamente a requisições, incluindo OPTIONS preflight, com cabeçalhos CORS e token válido.",
+    "category": "integration",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Fazer requisição OPTIONS para o endpoint do proxy Cubbo Auth."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que a resposta contém cabeçalhos CORS adequados e status 204."
+      },
+      {
+        "type": "action",
+        "description": "Fazer requisição POST/GET ao proxy com credenciais configuradas corretamente."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que o token OAuth retornado é válido e pronto para uso."
+      },
+      {
+        "type": "action",
+        "description": "Fazer requisição ao proxy com credenciais ausentes ou incorretas."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que a resposta indica erro apropriado de autenticação e cabeçalhos CORS ainda presentes."
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Cliente - Busca de Pedidos com Validação de Email e Código do Pedido",
+    "description": "Verificar que o cliente pode buscar pedidos pelo código ou email e sistema valida associação correta do email com o pedido.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Autenticar cliente com sucesso."
+      },
+      {
+        "type": "action",
+        "description": "No dashboard, inserir código e email correspondentes a pedido válido."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que os detalhes do pedido são exibidos corretamente."
+      },
+      {
+        "type": "action",
+        "description": "Inserir código válido mas associado a outro email."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que o sistema retorna erro de acesso não autorizado ao pedido."
+      },
+      {
+        "type": "action",
+        "description": "Inserir email válido mas código incorreto."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar erro apropriado e sem revelar dados do pedido."
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Ticket de Suporte - Criação, Visualização e Resposta pelo Cliente",
+    "description": "Verificar que o cliente pode abrir novos tickets, visualizar tickets existentes e responder pelo dashboard adequadamente.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Autenticar cliente e acessar dashboard de tickets."
+      },
+      {
+        "type": "action",
+        "description": "Criar ticket novo preenchendo formulário com título e descrição válidos."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que o ticket criado aparece na listagem com status correto."
+      },
+      {
+        "type": "action",
+        "description": "Abrir ticket existente para visualização do detalhe."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar exibição correta do histórico de mensagens e status."
+      },
+      {
+        "type": "action",
+        "description": "Responder ao ticket pelo formulário de resposta."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que a resposta é adicionada ao ticket e exibida no histórico."
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Painel Administrativo - Configuração de Credenciais e Teste de Conexão Cubbo",
+    "description": "Verificar que o administrador pode inserir credenciais Cubbo e store ID, testar conexão e ver estado atualizado na interface.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Autenticar administrador e acessar painel de configurações."
+      },
+      {
+        "type": "action",
+        "description": "Inserir credenciais Cubbo válidas e store ID no formulário."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que os campos aceitam e validam entradas conforme regras definidas."
+      },
+      {
+        "type": "action",
+        "description": "Clicar no botão de teste de conexão."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que o sistema confirma sucesso da conexão ou aponta falha com mensagens claras."
+      },
+      {
+        "type": "action",
+        "description": "Alterar credenciais para inválidas e testar novamente."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que erro de autenticação é mostrado e estado refletido na UI."
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Monitoramento - Logs e Mensagens de Erro Claras para Serviços Cloud Run",
+    "description": "Verificar que logs e mensagens de erro gerados pelos serviços Cloud Run (proxy de autenticacao e envio de email) são claros, úteis e detalhados para diagnóstico.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Gerar erro em proxy Cubbo Auth simulando credenciais inválidas."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que logs apresentam erro detalhado com timestamp e causa."
+      },
+      {
+        "type": "action",
+        "description": "Gerar erro no envio de email via Postmark proxy com credencial inválida."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar clareza das mensagens de erro nos logs e retorno para frontend."
+      },
+      {
+        "type": "action",
+        "description": "Verificar logs em operação normal com requisições válidas."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que logs são informativos sem expor dados sensíveis."
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Domínios Autorizados no Firebase Authentication",
+    "description": "Garantir que todos os domínios utilizados para frontend e serviços estão autorizados no Firebase Authentication para evitar erro de domínio não permitido.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Verificar configurações de domínios autorizados no console Firebase Authentication."
+      },
+      {
+        "type": "action",
+        "description": "Testar login via frontend a partir dos domínios permitidos."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que a autenticação é bem-sucedida sem erros relacionados a domínio."
+      },
+      {
+        "type": "action",
+        "description": "Tentar acessar fluxo de autenticação a partir de domínio não listado."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que o sistema bloqueia autenticação com mensagem clara de domínio não permitido."
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Deploy Local e Cloud Run com Variáveis de Ambiente Configuradas",
+    "description": "Verificar que a aplicação roda corretamente em ambiente local e é possível realizar deploy no Cloud Run com variáveis de ambiente configuradas funcionando.",
+    "category": "integration",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Configurar variáveis de ambiente locais para Firebase, Cubbo, Postmark, etc."
+      },
+      {
+        "type": "action",
+        "description": "Iniciar aplicação localmente com Vite e validar login, chatbot e rastreamento funcionando."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirmar que nenhum erro relacionado a variáveis ausentes ocorra e logs estão normais."
+      },
+      {
+        "type": "action",
+        "description": "Realizar deploy dos serviços Cloud Run (proxy Cubbo Auth e proxy Postmark) com variáveis configuradas no ambiente."
+      },
+      {
+        "type": "assertion",
+        "description": "Testar comunicação entre frontend e proxies, confirmando funcionamento sem falhas CORS ou autenticação."
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "Chatbot Google Gemini AI - Resposta a Perguntas e Chamada ao Serviço de Rastreamento",
+    "description": "Verificar a integração do chatbot que utiliza Google Gemini AI para responder perguntas e fazer chamadas validadas ao serviço de rastreamento via proxy Cubbo Auth.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Autenticar cliente e abrir chatbot no dashboard."
+      },
+      {
+        "type": "action",
+        "description": "Enviar pergunta relacionada a rastreamento de pedido validando código e email."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirmar que Google Gemini AI processa a pergunta e chatbot retorna resposta coerente."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que chatbot faz chamada ao proxy Cubbo Auth para obter dados do pedido."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirmar que chamada respeita validação de email e código do pedido e retorna dados válidos."
+      },
+      {
+        "type": "action",
+        "description": "Enviar pergunta fora do escopo ou inválida."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar retorno de mensagem adequada do chatbot."
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Gerenciamento de Tickets no Painel Administrativo",
+    "description": "Verificar que o administrador pode visualizar a lista de tickets, acessar detalhes, responder e alterar status pelo painel administrativo.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Autenticar administrador e acessar painel administrativo."
+      },
+      {
+        "type": "action",
+        "description": "Acessar listagem de tickets e filtrar por status ou cliente."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar que a lista mostra tickets com informações corretas e atualizadas."
+      },
+      {
+        "type": "action",
+        "description": "Abrir um ticket para detalhamento."
+      },
+      {
+        "type": "assertion",
+        "description": "Verificar exibição de histórico, mensagens e status atual."
+      },
+      {
+        "type": "action",
+        "description": "Responder ao ticket e alterar status (ex: aberto, em progresso, fechado)."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirmar que resposta é salva e status é atualizado corretamente."
+      }
+    ]
+  }
+]
