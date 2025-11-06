@@ -31,7 +31,7 @@ const faqFromFirestore = (docSnapshot: any): FAQEntry => {
 };
 
 export const faqService = {
-  getFAQEntries: async (category?: FAQCategory): Promise<FAQEntry[]> => {
+  getFAQEntries: async (category?: FAQCategory, companyId?: string): Promise<FAQEntry[]> => {
     try {
       // Buscar todos os documentos e filtrar/ordenar em memória para evitar necessidade de índice composto
       let q;
@@ -51,7 +51,14 @@ export const faqService = {
       }
       
       const snapshot = await getDocs(q);
-      const allEntries = snapshot.docs.map(faqFromFirestore);
+      let allEntries = snapshot.docs.map(faqFromFirestore);
+      
+      // Filtrar por companyId se fornecido (inclui "general" sempre)
+      if (companyId) {
+        allEntries = allEntries.filter(entry => 
+          !entry.companyId || entry.companyId === companyId || entry.companyId === 'general'
+        );
+      }
       
       // Filtrar por active em memória e garantir ordenação correta
       return allEntries
@@ -68,7 +75,15 @@ export const faqService = {
       // Fallback: buscar todos sem filtros e ordenar em memória
       try {
         const snapshot = await getDocs(faqCollection);
-        const allEntries = snapshot.docs.map(faqFromFirestore);
+        let allEntries = snapshot.docs.map(faqFromFirestore);
+        
+        // Filtrar por companyId se fornecido (inclui "general" sempre)
+        if (companyId) {
+          allEntries = allEntries.filter(entry => 
+            !entry.companyId || entry.companyId === companyId || entry.companyId === 'general'
+          );
+        }
+        
         return allEntries
           .filter(entry => entry.active !== false)
           .filter(entry => !category || entry.category === category)
@@ -151,9 +166,9 @@ export const faqService = {
     }
   },
 
-  searchFAQ: async (queryText: string): Promise<FAQEntry[]> => {
+  searchFAQ: async (queryText: string, companyId?: string): Promise<FAQEntry[]> => {
     try {
-      const allEntries = await faqService.getFAQEntries();
+      const allEntries = await faqService.getFAQEntries(undefined, companyId);
       const lowerQuery = queryText.toLowerCase();
       const queryWords = lowerQuery.split(' ').filter(w => w.length > 2);
 
@@ -217,11 +232,20 @@ export const faqService = {
   },
 
   // Método para obter todas as entradas (incluindo inativas) - útil para admin
-  getAllFAQEntries: async (): Promise<FAQEntry[]> => {
+  getAllFAQEntries: async (companyId?: string): Promise<FAQEntry[]> => {
     try {
       const q = query(faqCollection, orderBy('order', 'asc'));
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(faqFromFirestore);
+      let allEntries = snapshot.docs.map(faqFromFirestore);
+      
+      // Filtrar por companyId se fornecido (admin pode ver todas se não especificar)
+      if (companyId) {
+        allEntries = allEntries.filter(entry => 
+          !entry.companyId || entry.companyId === companyId || entry.companyId === 'general'
+        );
+      }
+      
+      return allEntries;
     } catch (error) {
       console.error('Error fetching all FAQ entries:', error);
       return [];

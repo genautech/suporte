@@ -2,6 +2,7 @@ import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { Message, MessageSender } from "../types";
 import { faqService } from "./faqService";
 import { knowledgeBaseService } from "./knowledgeBaseService";
+import { companyService } from "./companyService";
 
 // Vite usa import.meta.env para variáveis de ambiente no frontend
 // No Cloud Run, a variável deve ter prefixo VITE_ e ser definida como variável de ambiente
@@ -393,26 +394,41 @@ export const getGeminiResponse = async (history: Message[], userMessage: string)
     }
 };
 
-export const searchIntelligentFAQ = async (query: string): Promise<{
+export const searchIntelligentFAQ = async (
+  query: string,
+  companyId?: string
+): Promise<{
   answer: string;
   sources: Array<{ question: string; answer: string; category: string }>;
   suggestedQuestions?: string[];
 }> => {
     try {
-        // 1. Buscar no FAQ
-        const faqResults = await faqService.searchFAQ(query);
+        // 1. Buscar no FAQ (filtrar por companyId se fornecido)
+        const faqResults = await faqService.searchFAQ(query, companyId);
         
-        // 2. Buscar na base de conhecimento
-        const kbResult = await knowledgeBaseService.searchKnowledgeBase(query, false);
+        // 2. Buscar na base de conhecimento (filtrar por companyId se fornecido)
+        const kbResult = await knowledgeBaseService.searchKnowledgeBase(query, false, companyId);
         
-        // 3. Preparar contexto para Gemini
+        // 3. Obter informações da empresa se companyId fornecido
+        let companyName = 'Lojinha Prio by Yoobe';
+        let companyGreeting = 'Olá! Como posso ajudar?';
+        if (companyId && companyId !== 'general') {
+          try {
+            companyName = await companyService.getCompanyName(companyId);
+            companyGreeting = await companyService.getCompanyGreeting(companyId);
+          } catch (error) {
+            console.error('Error fetching company info:', error);
+          }
+        }
+        
+        // 4. Preparar contexto para Gemini
         const faqContext = faqResults.length > 0
             ? faqResults.map(e => `P: ${e.question}\nR: ${e.answer}`).join('\n\n')
             : 'Nenhuma entrada relevante encontrada no FAQ.';
         
         const kbContext = kbResult.answer || 'Nenhuma informação relevante na base de conhecimento.';
         
-        // 4. Usar Gemini para sintetizar resposta
+        // 5. Usar Gemini para sintetizar resposta
         if (!ai) {
             // Fallback: retornar primeira resposta do FAQ se disponível
             if (faqResults.length > 0) {
@@ -431,7 +447,9 @@ export const searchIntelligentFAQ = async (query: string): Promise<{
             };
         }
 
-        const prompt = `Você é um assistente de suporte da Lojinha Prio by Yoobe.
+        const prompt = `Você é um assistente de suporte da ${companyName}.
+
+${companyGreeting}
 
 Contexto do FAQ:
 ${faqContext}
@@ -447,6 +465,7 @@ Sua tarefa:
 3. Se não houver informação suficiente, seja honesto e sugira abrir um chamado
 4. Seja conciso mas completo
 5. Responda em português brasileiro
+6. Use a saudação "${companyGreeting}" como referência para o tom da conversa
 
 Resposta:`;
 
@@ -491,7 +510,7 @@ Resposta:`;
         console.error('Error in intelligent FAQ search:', error);
         
         // Fallback para busca simples
-        const faqResults = await faqService.searchFAQ(query);
+        const faqResults = await faqService.searchFAQ(query, companyId);
         if (faqResults.length > 0) {
             return {
                 answer: faqResults[0].answer,

@@ -21,6 +21,7 @@ interface SupportAreaProps {
   isLoading: boolean;
   onTicketClick: (ticket: Ticket) => void;
   onReload: () => void;
+  companyId?: string; // ID da empresa do usuário
 }
 
 export const SupportArea: React.FC<SupportAreaProps> = ({
@@ -29,7 +30,8 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
   orders,
   isLoading,
   onTicketClick,
-  onReload
+  onReload,
+  companyId
 }) => {
   const [activeTab, setActiveTab] = useState<'orders' | 'tickets' | 'chat' | 'faq'>('orders');
   const [selectedOrder, setSelectedOrder] = useState<CubboOrder | null>(null);
@@ -197,11 +199,11 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
               </div>
             </CardHeader>
             <CardContent>
-              <IntelligentFAQSearch onOpenTicket={() => setIsTicketFormOpen(true)} />
+              <IntelligentFAQSearch onOpenTicket={() => setIsTicketFormOpen(true)} companyId={companyId} />
             </CardContent>
           </Card>
           
-          <FAQArea onOpenTicket={() => setIsTicketFormOpen(true)} />
+          <FAQArea onOpenTicket={() => setIsTicketFormOpen(true)} companyId={companyId} />
         </div>
       </TabsContent>
 
@@ -214,6 +216,7 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
                 email: user.email || '',
                 phone: user.phoneNumber || ''
               }}
+              companyId={companyId}
               onTicketCreated={onReload}
               inline={true}
             />

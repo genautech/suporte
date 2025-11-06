@@ -23,7 +23,7 @@ import {
 } from './ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
-export const AdminKnowledgeBase: React.FC = () => {
+export const AdminKnowledgeBase: React.FC<{ companyId?: string }> = ({ companyId }) => {
   const [entries, setEntries] = useState<KnowledgeBaseEntry[]>([]);
   const [suggestions, setSuggestions] = useState<Array<{ ticket: Ticket; entry?: KnowledgeBaseEntry }>>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,15 +43,16 @@ export const AdminKnowledgeBase: React.FC = () => {
   useEffect(() => {
     loadEntries();
     loadSuggestions();
-  }, [selectedFilter, selectedCategory]);
+  }, [selectedFilter, selectedCategory, companyId]);
 
   const loadEntries = async () => {
     setIsLoading(true);
     try {
-      const filters: { verified?: boolean; category?: string } = {};
+      const filters: { verified?: boolean; category?: string; companyId?: string } = {};
       if (selectedFilter === 'verified') filters.verified = true;
       if (selectedFilter === 'unverified') filters.verified = false;
       if (selectedCategory !== 'all') filters.category = selectedCategory;
+      if (companyId) filters.companyId = companyId;
 
       const allEntries = await knowledgeBaseService.getKnowledgeBaseEntries(filters);
       setEntries(allEntries);

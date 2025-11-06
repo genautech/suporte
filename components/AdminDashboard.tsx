@@ -8,6 +8,7 @@ import { AdminTraining } from './AdminTraining';
 import { AdminOrders } from './AdminOrders';
 import { AdminFAQ } from './AdminFAQ';
 import { AdminKnowledgeBase } from './AdminKnowledgeBase';
+import { AdminCompanies } from './AdminCompanies';
 import { BrainIcon, LogoutIcon, MessageIcon } from './Icons'; // MessageIcon added
 import { SystemStatus } from './SystemStatus';
 import { Chatbot } from './Chatbot'; // New import for testing
@@ -17,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from './ui/badge';
 import { motion } from 'framer-motion';
 
-type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados';
+type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados' | 'companies';
 
 interface AdminDashboardProps {
     onLogout: () => void;
@@ -327,6 +328,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 return <AdminFAQ />;
             case 'knowledge':
                 return <AdminKnowledgeBase />;
+            case 'companies':
+                return <AdminCompanies />;
             case 'chatbot': // New view for chatbot testing
                 return (
                      <div className="animate-fade-in h-full flex flex-col items-center justify-center">
@@ -438,6 +441,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                     >
                         <BrainIcon className="w-4 h-4" />
                         Base de Conhecimento
+                    </motion.a>
+                    <motion.a 
+                        onClick={() => setView('companies')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'companies' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>🏢</span>
+                        Empresas
                     </motion.a>
                     <motion.a 
                         onClick={() => setView('arquivados')} 

@@ -34,7 +34,7 @@ const categoryLabels: Record<FAQCategory, string> = {
   geral: 'Geral',
 };
 
-export const AdminFAQ: React.FC = () => {
+export const AdminFAQ: React.FC<{ companyId?: string }> = ({ companyId }) => {
   const [faqEntries, setFaqEntries] = useState<FAQEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<FAQCategory | 'todos'>('todos');
@@ -52,12 +52,12 @@ export const AdminFAQ: React.FC = () => {
 
   useEffect(() => {
     loadFAQEntries();
-  }, [selectedCategory]);
+  }, [selectedCategory, companyId]);
 
   const loadFAQEntries = async () => {
     setIsLoading(true);
     try {
-      const entries = await faqService.getAllFAQEntries();
+      const entries = await faqService.getAllFAQEntries(companyId);
       const filtered = selectedCategory === 'todos'
         ? entries
         : entries.filter(e => e.category === selectedCategory);

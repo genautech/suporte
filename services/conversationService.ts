@@ -15,6 +15,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { Conversation, ConversationMessage } from '../types';
+import { companyService } from './companyService';
 
 const conversationsCollection = collection(db, 'conversations');
 
@@ -43,6 +44,17 @@ export const conversationService = {
     orderNumbers: string[] = []
   ): Promise<string> => {
     try {
+      // Identificar empresa do usuário pelo email
+      let companyId: string | undefined;
+      if (userId) {
+        try {
+          companyId = await companyService.getCompanyFromEmail(userId);
+        } catch (error) {
+          console.error('[conversationService] Erro ao identificar empresa:', error);
+          companyId = 'general'; // Fallback seguro
+        }
+      }
+      
       const conversationData = {
         userId,
         sessionId,
@@ -50,6 +62,7 @@ export const conversationService = {
         orderNumbers,
         resolved: false,
         attempts: 0,
+        companyId: companyId || 'general', // Adicionar companyId
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };

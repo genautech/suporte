@@ -43,6 +43,7 @@ export interface Ticket {
   orderId?: string; // ID do pedido (compatibilidade)
   orderNumber?: string; // Número do pedido (ex: "R595531189-dup")
   conversationId?: string; // ID da conversa que gerou o ticket
+  companyId?: string; // ID da empresa (identificado pelo email do usuário, opcional para compatibilidade)
   createdAt: number;
   updatedAt: number;
   history: TicketHistoryItem[];
@@ -143,20 +144,21 @@ export interface ConversationMessage {
 }
 
 export interface Conversation {
-    id?: string;
-    userId: string; // Email do usuário
-    sessionId: string; // ID único da sessão (UUID)
-    messages: ConversationMessage[];
-    orderNumbers: string[]; // Array de pedidos mencionados na conversa
-    resolved: boolean; // Se a conversa foi resolvida
-    feedback?: {
-        rating: number; // 1-5 estrelas
-        comment?: string;
-        timestamp: number;
-    };
-    attempts: number; // Contador de tentativas sem resolução
-    createdAt: number;
-    updatedAt: number;
+  id?: string;
+  userId: string; // Email do usuário
+  sessionId: string; // ID único da sessão (UUID)
+  messages: ConversationMessage[];
+  orderNumbers: string[]; // Array de pedidos mencionados na conversa
+  resolved: boolean; // Se a conversa foi resolvida
+  companyId?: string; // ID da empresa (identificado pelo email do usuário, opcional para compatibilidade)
+  feedback?: {
+    rating: number; // 1-5 estrelas
+    comment?: string;
+    timestamp: number;
+  };
+  attempts: number; // Contador de tentativas sem resolução
+  createdAt: number;
+  updatedAt: number;
 }
 
 export type FAQCategory = 'compra' | 'troca' | 'rastreio' | 'cancelamento' | 'reembolso' | 'sla' | 'geral';
@@ -173,6 +175,7 @@ export interface FAQEntry {
   updatedAt: number;
   views?: number; // Contador de visualizações
   helpful?: number; // Contador de "útil"
+  companyId?: string; // ID da empresa ("general" para FAQ padrão, opcional para compatibilidade)
 }
 
 export type TicketSubject = 
@@ -219,4 +222,28 @@ export interface KnowledgeBaseEntry {
   createdAt: number;
   updatedAt: number;
   verified: boolean;
+  companyId?: string; // ID da empresa (opcional para compatibilidade)
+}
+
+// Multi-tenant types
+export interface Company {
+  id?: string;
+  name: string;  // Nome fantasia
+  domains: string[];  // Domínios de email (ex: ["prio"])
+  keywords: string[];  // Palavras-chave (ex: ["yampi", "hapvida"])
+  greeting: string;  // Saudação personalizada
+  managerEmail: string;  // Email do gestor
+  managerName: string;  // Nome do gestor
+  managerAccessEnabled: boolean;  // Se gestor tem acesso
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type UserRole = 'admin' | 'manager' | 'client';
+
+export interface UserRoleData {
+  email: string;
+  role: UserRole;
+  companyId?: string;  // Se manager, qual empresa
+  createdAt: number;
 }

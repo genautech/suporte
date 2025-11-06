@@ -20,9 +20,9 @@ export const HomePage: React.FC<HomePageProps> = ({ onUserLoginClick, onAdminLog
                 <CardHeader className="text-center">
                     <div className="text-6xl mb-4">🛍️</div>
                     <CardTitle className="text-4xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent mb-2">
-                        Lojinha Prio
+                        Suporte Yoobe
                     </CardTitle>
-                    <CardDescription className="text-base">by Yoobe</CardDescription>
+                    <CardDescription className="text-base">O aplicativo de suporte da sua loja corporativa.</CardDescription>
                 </CardHeader>
                 
                 <CardContent>

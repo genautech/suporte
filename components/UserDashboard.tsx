@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { User } from 'firebase/auth';
 import { Ticket, CubboOrder } from '../types';
 import { supportService } from '../services/supportService';
+import { companyService } from '../services/companyService';
 import { Chatbot } from './Chatbot';
 import { SupportArea } from './SupportArea';
 import { TicketDetailModal } from './TicketDetailModal';
@@ -33,6 +34,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileUser, setProfileUser] = useState(user);
+  const [companyId, setCompanyId] = useState<string>('general');
+  const [companyName, setCompanyName] = useState<string>('Suporte Yoobe');
 
   const loadData = useCallback(async () => {
     if (user?.email || user?.phoneNumber) {
@@ -56,6 +59,18 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
       setIsProfileModalOpen(true);
     }
     loadData();
+    
+    // Detectar empresa do usuário
+    if (user.email) {
+      companyService.getCompanyFromEmail(user.email).then((id) => {
+        setCompanyId(id);
+        if (id && id !== 'general') {
+          companyService.getCompanyName(id).then((name) => {
+            setCompanyName(name);
+          });
+        }
+      });
+    }
   }, [user, loadData]);
 
   const handleViewTicket = (ticket: Ticket) => {
@@ -97,7 +112,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
               >
                 <span className="text-3xl">🛍️</span>
                 <span className="text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                  Lojinha Prio
+                  {companyName}
                 </span>
               </motion.div>
               <div className="flex items-center gap-4">
@@ -160,6 +175,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
             isLoading={isLoading}
             onTicketClick={handleViewTicket}
             onReload={loadData}
+            companyId={companyId}
           />
         </main>
       </div>
@@ -171,6 +187,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
             email: profileUser.email || '',
             phone: profileUser.phoneNumber || ''
         }}
+        companyId={companyId}
         onTicketCreated={loadData}
         inline={false}
       />

@@ -35,6 +35,7 @@ export const knowledgeBaseService = {
   getKnowledgeBaseEntries: async (filters?: {
     category?: string;
     verified?: boolean;
+    companyId?: string;
   }): Promise<KnowledgeBaseEntry[]> => {
     try {
       let q: any = query(knowledgeBaseCollection, orderBy('createdAt', 'desc'));
@@ -61,7 +62,16 @@ export const knowledgeBaseService = {
       }
 
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(knowledgeEntryFromFirestore);
+      let entries = snapshot.docs.map(knowledgeEntryFromFirestore);
+      
+      // Filtrar por companyId se fornecido (inclui "general" sempre)
+      if (filters?.companyId) {
+        entries = entries.filter(entry => 
+          !entry.companyId || entry.companyId === filters.companyId || entry.companyId === 'general'
+        );
+      }
+      
+      return entries;
     } catch (error) {
       console.error('Error fetching knowledge base entries:', error);
       return [];
@@ -131,11 +141,13 @@ export const knowledgeBaseService = {
 
   searchKnowledgeBase: async (
     queryText: string,
-    useGemini: boolean = false
+    useGemini: boolean = false,
+    companyId?: string
   ): Promise<{ answer: string; sources: KnowledgeBaseEntry[] }> => {
     try {
       const allEntries = await knowledgeBaseService.getKnowledgeBaseEntries({
         verified: true,
+        companyId,
       });
 
       const lowerQuery = queryText.toLowerCase();

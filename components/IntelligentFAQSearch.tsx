@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { faqService } from '../services/faqService';
 import { knowledgeBaseService } from '../services/knowledgeBaseService';
+import { searchIntelligentFAQ } from '../services/geminiService';
 import { FAQEntry } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -12,9 +13,10 @@ import { motion } from 'framer-motion';
 
 interface IntelligentFAQSearchProps {
   onOpenTicket?: () => void;
+  companyId?: string; // ID da empresa para filtrar FAQ
 }
 
-export const IntelligentFAQSearch: React.FC<IntelligentFAQSearchProps> = ({ onOpenTicket }) => {
+export const IntelligentFAQSearch: React.FC<IntelligentFAQSearchProps> = ({ onOpenTicket, companyId }) => {
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [faqResults, setFaqResults] = useState<FAQEntry[]>([]);
@@ -30,50 +32,26 @@ export const IntelligentFAQSearch: React.FC<IntelligentFAQSearchProps> = ({ onOp
     setSuggestedQuestions([]);
 
     try {
-      // 1. Buscar no FAQ primeiro
-      const faqResults = await faqService.searchFAQ(query);
+      // 1. Buscar no FAQ primeiro (filtrar por companyId)
+      const faqResults = await faqService.searchFAQ(query, companyId);
       setFaqResults(faqResults);
 
-      // 2. Buscar na base de conhecimento
-      const kbResult = await knowledgeBaseService.searchKnowledgeBase(query, false);
+      // 2. Buscar na base de conhecimento (filtrar por companyId)
+      const kbResult = await knowledgeBaseService.searchKnowledgeBase(query, false, companyId);
       
-      // 3. Se não encontrou resultados suficientes ou quer resposta mais inteligente, usar Gemini
-      if (faqResults.length === 0 || query.length > 10) {
-        // Usar Gemini para buscar e sintetizar resposta
-        const geminiMessages: Message[] = [
-          {
-            id: '1',
-            text: `Baseado no seguinte contexto do FAQ e base de conhecimento, responda a pergunta do usuário de forma clara e útil:\n\nFAQ encontrado:\n${faqResults.map(e => `Q: ${e.question}\nA: ${e.answer}`).join('\n\n')}\n\nBase de conhecimento:\n${kbResult.answer}\n\nPergunta do usuário: ${query}`,
-            sender: MessageSender.USER,
-          },
-        ];
-
-        const geminiResponse = await getGeminiResponse(geminiMessages, query);
+      // 3. Usar busca inteligente com Gemini (filtrar por companyId)
+      const intelligentResult = await searchIntelligentFAQ(query, companyId);
+      
+      if (intelligentResult.answer) {
+        setGeminiAnswer(intelligentResult.answer);
         
-        if (geminiResponse && geminiResponse.text) {
-          setGeminiAnswer(geminiResponse.text);
-          
-          // Gerar perguntas sugeridas usando Gemini
-          const suggestionPrompt = `Baseado na pergunta "${query}", sugira 3 perguntas relacionadas que o usuário pode ter interesse. Retorne apenas as perguntas, uma por linha.`;
-          const suggestionResponse = await getGeminiResponse(
-            [{ id: '1', text: suggestionPrompt, sender: MessageSender.USER }],
-            suggestionPrompt
-          );
-          
-          if (suggestionResponse && suggestionResponse.text) {
-            const suggestions = suggestionResponse.text
-              .split('\n')
-              .map(s => s.trim())
-              .filter(s => s.length > 0 && !s.match(/^\d+[\.\)]/))
-              .slice(0, 3);
-            setSuggestedQuestions(suggestions);
-          }
+        // Adicionar perguntas sugeridas se disponíveis
+        if (intelligentResult.suggestedQuestions) {
+          setSuggestedQuestions(intelligentResult.suggestedQuestions);
         }
-      } else {
-        // Se encontrou no FAQ, usar primeira resposta como resposta principal
-        if (faqResults.length > 0) {
-          setGeminiAnswer(`Baseado nas informações do nosso FAQ:\n\n${faqResults[0].answer}`);
-        }
+      } else if (faqResults.length > 0) {
+        // Fallback: usar primeira resposta do FAQ
+        setGeminiAnswer(`Baseado nas informações do nosso FAQ:\n\n${faqResults[0].answer}`);
       }
     } catch (error) {
       console.error('Error in intelligent search:', error);
