@@ -5,6 +5,7 @@ import { Message, MessageSender, ConversationMessage } from '../types';
 import { getGeminiResponse, searchIntelligentFAQ } from '../services/geminiService';
 import { supportService } from '../services/supportService';
 import { conversationService } from '../services/conversationService';
+import { companyService } from '../services/companyService';
 import { MessageIcon, CloseIcon, SendIcon, UserIcon, BotIcon } from './Icons';
 import { ExchangeForm } from './ExchangeForm';
 import { SupportTicketFormAdvanced } from './SupportTicketFormAdvanced';
@@ -20,9 +21,10 @@ interface ChatbotProps {
     user: { name: string; email: string; phone: string; };
     onTicketCreated?: () => void;
     inline?: boolean; // Se true, renderiza inline ao invés de flutuante
+    companyId?: string; // ID da empresa do usuário
 }
 
-export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline = false }) => {
+export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline = false, companyId }) => {
     const [isOpen, setIsOpen] = useState(inline); // Se inline, já inicia aberto
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
@@ -36,6 +38,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
     const [mentionedOrderNumbers, setMentionedOrderNumbers] = useState<string[]>([]);
     const [conversationHistory, setConversationHistory] = useState<any[]>([]);
     const [showFeedback, setShowFeedback] = useState(false);
+    const [companyGreeting, setCompanyGreeting] = useState<string>('Olá! 👋 Sou o assistente virtual. Como posso te ajudar hoje?');
     const messagesEndRef = useRef<null | HTMLDivElement>(null);
 
     const scrollToBottom = () => {
@@ -49,6 +52,13 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
         const storedSessionId = conversationService.getOrCreateSessionId();
         setSessionId(storedSessionId);
         
+        // Carregar saudação da empresa se companyId fornecido
+        if (companyId && companyId !== 'general') {
+            companyService.getCompanyGreeting(companyId).then((greeting) => {
+                setCompanyGreeting(greeting);
+            });
+        }
+        
         // Verificar se é usuário retornante
         if (user.email) {
             conversationService.getLastConversation(user.email).then((lastConv) => {
@@ -61,14 +71,14 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
                 }
             });
         }
-    }, [user.email]);
+    }, [user.email, companyId]);
 
     useEffect(() => {
         if ((isOpen || inline) && messages.length === 0) {
-            let welcomeMessage = 'Olá! 👋 Sou o assistente virtual da Lojinha Prio. Como posso te ajudar hoje? Você pode rastrear um pedido, solicitar uma troca ou tirar dúvidas.';
+            let welcomeMessage = companyGreeting;
             
             if (isReturningUser && user.name) {
-                welcomeMessage = `Olá novamente, ${user.name}! 👋 Que bom te ver de volta! Como posso ajudar hoje?`;
+                welcomeMessage = `${companyGreeting}\n\nOlá novamente, ${user.name}! 👋 Que bom te ver de volta!`;
                 
                 // Adicionar contexto sobre conversas anteriores se houver pedidos mencionados
                 if (conversationHistory.length > 0) {
@@ -79,11 +89,13 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
                 }
             }
             
+            welcomeMessage += '\n\nVocê pode rastrear um pedido, solicitar uma troca ou tirar dúvidas.';
+            
             setMessages([
                 { id: 'welcome', text: welcomeMessage, sender: MessageSender.BOT }
             ]);
         }
-    }, [isOpen, inline, messages.length, isReturningUser, user.name, conversationHistory]);
+    }, [isOpen, inline, messages.length, isReturningUser, user.name, conversationHistory, companyGreeting]);
 
     const handleFormSubmit = async (formType: 'exchange' | 'ticket', data: any) => {
         const confirmationText = formType === 'exchange'
@@ -318,7 +330,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
                     addMessage(`Buscando informações sobre "${query}"... 🔍`, MessageSender.BOT);
                     
                     try {
-                        const intelligentResult = await searchIntelligentFAQ(query);
+                        const intelligentResult = await searchIntelligentFAQ(query, companyId);
                         
                         if (intelligentResult.answer) {
                             addMessage(intelligentResult.answer, MessageSender.BOT);
@@ -456,7 +468,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
         
         const response = await getGeminiResponse(
             enrichedMessages, 
-            userMessage + contextInfo
+            userMessage + contextInfo,
+            companyId
         );
         setIsLoading(false);
 

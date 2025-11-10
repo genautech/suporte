@@ -122,7 +122,7 @@ export const TicketForm: React.FC<TicketFormProps> = ({ ticket, onSubmit }) => {
             <SelectTrigger className="w-full">
               <SelectValue placeholder={field.placeholder || `Selecione ${field.label}`} />
             </SelectTrigger>
-            <SelectContent className="z-[100]">
+            <SelectContent className="z-[10000]">
               {field.options?.map(option => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
@@ -266,7 +266,7 @@ export const TicketForm: React.FC<TicketFormProps> = ({ ticket, onSubmit }) => {
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o tipo de chamado" />
                     </SelectTrigger>
-                    <SelectContent className="z-[100]">
+                    <SelectContent className="z-[10000]">
                       {Object.entries(subjectLabels).map(([key, label]) => (
                         <SelectItem key={key} value={key}>
                           {label}
@@ -331,7 +331,7 @@ export const TicketForm: React.FC<TicketFormProps> = ({ ticket, onSubmit }) => {
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="z-[100]">
+                      <SelectContent className="z-[10000]">
                         <SelectItem value="baixa">Baixa</SelectItem>
                         <SelectItem value="media">Média</SelectItem>
                         <SelectItem value="alta">Alta</SelectItem>
@@ -347,7 +347,7 @@ export const TicketForm: React.FC<TicketFormProps> = ({ ticket, onSubmit }) => {
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="z-[100]">
+                      <SelectContent className="z-[10000]">
                         <SelectItem value="aberto">Aberto</SelectItem>
                         <SelectItem value="em_andamento">Em Andamento</SelectItem>
                         <SelectItem value="resolvido">Resolvido</SelectItem>

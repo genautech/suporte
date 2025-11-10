@@ -8,6 +8,9 @@ import { AdminTraining } from './AdminTraining';
 import { AdminOrders } from './AdminOrders';
 import { AdminFAQ } from './AdminFAQ';
 import { AdminKnowledgeBase } from './AdminKnowledgeBase';
+import { AdminCompanies } from './AdminCompanies';
+import { companyService } from '../services/companyService';
+import { Company } from '../types';
 import { BrainIcon, LogoutIcon, MessageIcon } from './Icons'; // MessageIcon added
 import { SystemStatus } from './SystemStatus';
 import { Chatbot } from './Chatbot'; // New import for testing
@@ -15,13 +18,20 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Badge } from './ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 import { motion } from 'framer-motion';
 
-type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados';
+type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados' | 'companies';
 
 interface AdminDashboardProps {
     onLogout: () => void;
-    onSwitchToClient?: () => void;
+    onSwitchToClient?: (companyId?: string) => void;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToClient }) => {
@@ -32,6 +42,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [showArchived, setShowArchived] = useState(false);
+    const [companies, setCompanies] = useState<Company[]>([]);
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string>('general');
     
     const loadTickets = useCallback(async () => {
         setIsLoading(true);
@@ -45,6 +57,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
             loadTickets();
         }
     }, [view, loadTickets]);
+
+    useEffect(() => {
+        // Carregar empresas para o select de visualização como cliente
+        const loadCompanies = async () => {
+            try {
+                const allCompanies = await companyService.getAllCompanies();
+                setCompanies(allCompanies);
+            } catch (error) {
+                console.error('Error loading companies:', error);
+            }
+        };
+        loadCompanies();
+    }, []);
     
     const handleEditTicket = (ticket: Ticket) => {
         setSelectedTicket(ticket);
@@ -327,6 +352,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 return <AdminFAQ />;
             case 'knowledge':
                 return <AdminKnowledgeBase />;
+            case 'companies':
+                return <AdminCompanies />;
             case 'chatbot': // New view for chatbot testing
                 return (
                      <div className="animate-fade-in h-full flex flex-col items-center justify-center">
@@ -440,6 +467,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                         Base de Conhecimento
                     </motion.a>
                     <motion.a 
+                        onClick={() => setView('companies')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'companies' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>🏢</span>
+                        Empresas
+                    </motion.a>
+                    <motion.a 
                         onClick={() => setView('arquivados')} 
                         whileHover={{ x: 4 }}
                         whileTap={{ scale: 0.98 }}
@@ -468,14 +508,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 </nav>
                 <div className="p-4 border-t border-border space-y-2">
                     {onSwitchToClient && (
-                        <Button 
-                            onClick={onSwitchToClient} 
-                            variant="outline"
-                            className="w-full"
-                        >
-                            <span className="mr-2">👤</span>
-                            Ver como Cliente
-                        </Button>
+                        <div className="space-y-2">
+                            <Select
+                                value={selectedCompanyId}
+                                onValueChange={setSelectedCompanyId}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Selecione o cliente" />
+                                </SelectTrigger>
+                                <SelectContent className="z-[10000]">
+                                    <SelectItem value="general">Geral (Todos)</SelectItem>
+                                    {companies.map((company) => (
+                                        <SelectItem key={company.id} value={company.id || ''}>
+                                            {company.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Button 
+                                onClick={() => onSwitchToClient(selectedCompanyId === 'general' ? undefined : selectedCompanyId)} 
+                                variant="outline"
+                                className="w-full"
+                            >
+                                <span className="mr-2">👤</span>
+                                Ver como Cliente
+                            </Button>
+                        </div>
                     )}
                     <Button 
                         onClick={onLogout} 

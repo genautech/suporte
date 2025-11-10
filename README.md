@@ -151,6 +151,8 @@ O arquivo `cloudbuild.yaml` deve conter a substituição `_VITE_GEMINI_API_KEY` 
 
 - ✅ Chatbot inteligente com Gemini AI
 - ✅ FAQ completo com busca inteligente
+- ✅ **FAQ Multi-tenant por Cliente** - FAQs específicas por empresa
+- ✅ **Integração FAQ com Gemini AI** - Contexto do FAQ disponível para aprendizado
 - ✅ Base de conhecimento com aprendizado automático
 - ✅ Gestão de chamados (CRUD completo)
 - ✅ Arquivamento de chamados
@@ -158,6 +160,8 @@ O arquivo `cloudbuild.yaml` deve conter a substituição `_VITE_GEMINI_API_KEY` 
 - ✅ Formulários dinâmicos baseados em assunto
 - ✅ Sistema de conversas persistente
 - ✅ Autenticação por código de email
+- ✅ **Visualização Admin como Cliente** - Admin pode visualizar como qualquer cliente
+- ✅ **Gerenciamento FAQ por Gestores** - Gestores podem gerenciar FAQs da sua empresa
 
 ## 🔒 Segurança
 

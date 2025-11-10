@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { User } from 'firebase/auth';
 import { Ticket, CubboOrder } from '../types';
 import { supportService } from '../services/supportService';
+import { companyService } from '../services/companyService';
 import { Chatbot } from './Chatbot';
 import { SupportArea } from './SupportArea';
 import { TicketDetailModal } from './TicketDetailModal';
@@ -23,9 +24,10 @@ interface UserDashboardProps {
   onLogout: () => void;
   adminMode?: boolean;
   onSwitchToAdmin?: () => void;
+  adminSelectedCompanyId?: string; // CompanyId selecionado pelo admin para visualização
 }
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode = false, onSwitchToAdmin }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode = false, onSwitchToAdmin, adminSelectedCompanyId }) => {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [orders, setOrders] = useState<CubboOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +35,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileUser, setProfileUser] = useState(user);
+  const [companyId, setCompanyId] = useState<string>('general');
+  const [companyName, setCompanyName] = useState<string>('Suporte Yoobe');
 
   const loadData = useCallback(async () => {
     if (user?.email || user?.phoneNumber) {
@@ -52,11 +56,34 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
   }, [user]);
 
   useEffect(() => {
+    // Atualizar profileUser quando user mudar
+    setProfileUser(user);
+    
     if (!user.displayName || !user.email) {
       setIsProfileModalOpen(true);
     }
     loadData();
-  }, [user, loadData]);
+    
+    // Detectar empresa do usuário
+    // Se admin selecionou um cliente específico, usar esse; senão, detectar pelo email
+    if (adminSelectedCompanyId) {
+      setCompanyId(adminSelectedCompanyId);
+      if (adminSelectedCompanyId !== 'general') {
+        companyService.getCompanyName(adminSelectedCompanyId).then((name) => {
+          setCompanyName(name);
+        });
+      }
+    } else if (user.email) {
+      companyService.getCompanyFromEmail(user.email).then((id) => {
+        setCompanyId(id);
+        if (id && id !== 'general') {
+          companyService.getCompanyName(id).then((name) => {
+            setCompanyName(name);
+          });
+        }
+      });
+    }
+  }, [user, loadData, adminSelectedCompanyId]);
 
   const handleViewTicket = (ticket: Ticket) => {
     setSelectedTicket(ticket);
@@ -97,7 +124,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
               >
                 <span className="text-3xl">🛍️</span>
                 <span className="text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                  Lojinha Prio
+                  {companyName}
                 </span>
               </motion.div>
               <div className="flex items-center gap-4">
@@ -160,6 +187,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
             isLoading={isLoading}
             onTicketClick={handleViewTicket}
             onReload={loadData}
+            companyId={companyId}
+            adminMode={adminMode}
           />
         </main>
       </div>
@@ -171,6 +200,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
             email: profileUser.email || '',
             phone: profileUser.phoneNumber || ''
         }}
+        companyId={companyId}
         onTicketCreated={loadData}
         inline={false}
       />

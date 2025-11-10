@@ -16,15 +16,27 @@ service cloud.firestore {
     }
     
     // FAQ - todos podem ler, apenas admins podem escrever
+    // Clientes veem apenas FAQ da sua empresa + generalista
     match /faq/{faqId} {
-      allow read: if true;
+      allow read: if true; // Todos podem ler, filtro por companyId é feito no código
       allow write: if request.auth != null && request.auth.token.admin == true;
     }
     
     // Knowledge Base - todos podem ler, apenas admins podem escrever
+    // Clientes veem apenas KB da sua empresa + generalista
     match /knowledgeBase/{kbId} {
-      allow read: if true;
+      allow read: if true; // Todos podem ler, filtro por companyId é feito no código
       allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Companies - apenas admins podem ler/escrever
+    match /companies/{companyId} {
+      allow read, write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // User Roles - apenas admins podem ler/escrever
+    match /userRoles/{email} {
+      allow read, write: if request.auth != null && request.auth.token.admin == true;
     }
     
     // Conversations - usuários podem ler/escrever suas próprias conversas

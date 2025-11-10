@@ -8,6 +8,8 @@ import {
   getDocs,
   updateDoc,
   doc,
+  getDoc,
+  setDoc,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -158,6 +160,114 @@ export const resetPasswordWithCode = async (email: string, code: string): Promis
     };
   }
 };
+// User roles and permissions management
+const userRolesCollection = collection(db, 'userRoles');
+
+/**
+ * Gets user role from Firestore
+ */
+export const getUserRole = async (email: string): Promise<'admin' | 'manager' | 'client'> => {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Check if admin@yoobe.co (hardcoded admin for backward compatibility)
+    if (normalizedEmail === 'admin@yoobe.co') {
+      return 'admin';
+    }
+    
+    const docRef = doc(db, 'userRoles', normalizedEmail);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return data.role || 'client';
+    }
+    
+    return 'client'; // Default role
+  } catch (error) {
+    console.error('Error getting user role:', error);
+    return 'client'; // Safe fallback
+  }
+};
+
+/**
+ * Checks if user is admin
+ */
+export const isAdmin = async (email: string): Promise<boolean> => {
+  const role = await getUserRole(email);
+  return role === 'admin';
+};
+
+/**
+ * Checks if user is manager
+ */
+export const isManager = async (email: string): Promise<boolean> => {
+  const role = await getUserRole(email);
+  return role === 'manager';
+};
+
+/**
+ * Gets manager's company ID
+ */
+export const getManagerCompany = async (email: string): Promise<string | null> => {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    const docRef = doc(db, 'userRoles', normalizedEmail);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.role === 'manager' && data.companyId) {
+        return data.companyId;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting manager company:', error);
+    return null;
+  }
+};
+
+/**
+ * Grants manager access to a user
+ */
+export const grantManagerAccess = async (email: string, companyId: string): Promise<void> => {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    const docRef = doc(db, 'userRoles', normalizedEmail);
+    
+    await setDoc(docRef, {
+      email: normalizedEmail,
+      role: 'manager',
+      companyId,
+      createdAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error granting manager access:', error);
+    throw error;
+  }
+};
+
+/**
+ * Revokes manager access
+ */
+export const revokeManagerAccess = async (email: string): Promise<void> => {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    const docRef = doc(db, 'userRoles', normalizedEmail);
+    
+    // Update role to client or delete if needed
+    await updateDoc(docRef, {
+      role: 'client',
+      companyId: null,
+    });
+  } catch (error) {
+    console.error('Error revoking manager access:', error);
+    throw error;
+  }
+};
+
 export const sendAuthCodeEmail = async (email: string, code: string): Promise<{ success: boolean; error?: string }> => {
   const EMAIL_PROXY_URL = ((import.meta as any).env?.VITE_POSTMARK_PROXY_URL as string) || 
     'https://postmark-email-proxy-409489811769.southamerica-east1.run.app';

@@ -3,23 +3,37 @@ import React, { useState, useEffect } from 'react';
 import { HomePage } from './components/HomePage';
 import { UserLogin } from './components/UserLogin';
 import { AdminLogin } from './components/AdminLogin';
+import { ManagerLogin } from './components/ManagerLogin';
 import UserDashboard from './components/UserDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import ManagerDashboard from './components/ManagerDashboard';
 import { auth } from './firebase';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
+import { AdminClientView } from './components/AdminClientView';
 import { Toaster } from './components/ui/toaster';
 
-type AppView = 'home' | 'userLogin' | 'adminLogin';
+type AppView = 'home' | 'userLogin' | 'adminLogin' | 'managerLogin';
 type AdminViewMode = 'admin' | 'client';
 
 const App: React.FC = () => {
     const [view, setView] = useState<AppView>('home');
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [isManager, setIsManager] = useState(false);
+    const [managerCompanyId, setManagerCompanyId] = useState<string | null>(null);
     const [adminViewMode, setAdminViewMode] = useState<AdminViewMode>('admin');
+    const [adminSelectedCompanyId, setAdminSelectedCompanyId] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        // Detectar rota da URL (suporte incremental para /admin e /manager)
+        const pathname = window.location.pathname;
+        if (pathname === '/admin' && view !== 'adminLogin') {
+            setView('adminLogin');
+        } else if (pathname === '/manager' && view !== 'managerLogin') {
+            setView('managerLogin');
+        }
+        
         // Monitor authentication state changes
         // Adicionar timeout para evitar loading infinito em caso de erro
         const timeoutId = setTimeout(() => {
@@ -49,12 +63,22 @@ const App: React.FC = () => {
 
     const handleAdminLoginSuccess = () => {
         setIsAdmin(true);
+        setIsManager(false);
+        setManagerCompanyId(null);
         setAdminViewMode('admin');
+    };
+
+    const handleManagerLoginSuccess = (companyId: string) => {
+        setIsManager(true);
+        setIsAdmin(false);
+        setManagerCompanyId(companyId);
     };
     
     const handleLogout = () => {
         signOut(auth).then(() => {
             setIsAdmin(false);
+            setIsManager(false);
+            setManagerCompanyId(null);
             setAdminViewMode('admin');
             setView('home');
         }).catch((error) => {
@@ -62,8 +86,9 @@ const App: React.FC = () => {
         });
     };
     
-    const handleAdminViewModeChange = (mode: AdminViewMode) => {
+    const handleAdminViewModeChange = (mode: AdminViewMode, companyId?: string) => {
         setAdminViewMode(mode);
+        setAdminSelectedCompanyId(companyId);
     };
 
     if (isLoading) {
@@ -75,41 +100,28 @@ const App: React.FC = () => {
     }
     
     const renderView = () => {
+        if (isManager && managerCompanyId) {
+            return (
+                <ManagerDashboard 
+                    companyId={managerCompanyId}
+                    onLogout={handleLogout}
+                />
+            );
+        }
         if (isAdmin) {
             // Admin pode alternar entre visualização admin e cliente
             if (adminViewMode === 'client') {
-                // Criar um usuário mock para o admin visualizar como cliente
-                const mockUser: User = currentUser || {
-                    uid: 'admin-mock-user',
-                    email: 'admin@yoobe.co',
-                    displayName: 'Admin (Modo Cliente)',
-                    phoneNumber: null,
-                    photoURL: null,
-                    emailVerified: false,
-                    isAnonymous: false,
-                    metadata: {} as any,
-                    providerData: [],
-                    refreshToken: '',
-                    tenantId: null,
-                    delete: async () => {},
-                    getIdToken: async () => '',
-                    getIdTokenResult: async () => ({} as any),
-                    reload: async () => {},
-                    toJSON: () => ({}),
-                } as User;
-                return (
-                    <UserDashboard 
-                        user={mockUser} 
-                        onLogout={handleLogout}
-                        adminMode={true}
-                        onSwitchToAdmin={() => handleAdminViewModeChange('admin')}
-                    />
-                );
+                // Usar componente que carrega os dados da empresa assincronamente
+                return <AdminClientView 
+                    adminSelectedCompanyId={adminSelectedCompanyId}
+                    onLogout={handleLogout}
+                    onSwitchToAdmin={() => handleAdminViewModeChange('admin')}
+                />;
             }
             return (
                 <AdminDashboard 
                     onLogout={handleLogout}
-                    onSwitchToClient={() => handleAdminViewModeChange('client')}
+                    onSwitchToClient={(companyId) => handleAdminViewModeChange('client', companyId)}
                 />
             );
         }
@@ -121,6 +133,8 @@ const App: React.FC = () => {
                 return <UserLogin onBackToHome={() => setView('home')} />;
             case 'adminLogin':
                 return <AdminLogin onLoginSuccess={handleAdminLoginSuccess} />;
+            case 'managerLogin':
+                return <ManagerLogin onLoginSuccess={handleManagerLoginSuccess} />;
             case 'home':
             default:
                 return <HomePage onUserLoginClick={() => setView('userLogin')} onAdminLoginClick={() => setView('adminLogin')} />;

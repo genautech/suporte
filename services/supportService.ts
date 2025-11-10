@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { Ticket, TicketStatus, KnowledgeBase, ApiConfig, CubboOrder, PickupLocation, TicketSubject, TicketFormConfig } from '../types';
 import { getTicketFormConfig } from '../data/ticketFormConfigs';
+import { companyService } from './companyService';
 
 const ticketsCollection = collection(db, 'tickets');
 const apiConfigsCollection = collection(db, 'apiConfigs');
@@ -570,10 +571,22 @@ export const supportService = {
         }
       }
       
+      // Identificar empresa do usuário pelo email
+      let companyId: string | undefined;
+      if (ticketData.email) {
+        try {
+          companyId = await companyService.getCompanyFromEmail(ticketData.email);
+        } catch (error) {
+          console.error('[createTicket] Erro ao identificar empresa:', error);
+          companyId = 'general'; // Fallback seguro
+        }
+      }
+      
       const newTicket = {
           ...ticketData,
           orderId: orderId || ticketData.orderId,
           phone: ticketData.phone?.replace(/\D/g, '') || '',
+          companyId: companyId || ticketData.companyId, // Usar companyId identificado ou o fornecido
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           history: [{
