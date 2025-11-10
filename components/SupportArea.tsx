@@ -6,6 +6,7 @@ import { OrderDetailModal } from './OrderDetailModal';
 import { Chatbot } from './Chatbot';
 import { FAQArea } from './FAQArea';
 import { IntelligentFAQSearch } from './IntelligentFAQSearch';
+import { AdminFAQ } from './AdminFAQ';
 import { SupportTicketFormAdvanced } from './SupportTicketFormAdvanced';
 import { User } from 'firebase/auth';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -22,6 +23,7 @@ interface SupportAreaProps {
   onTicketClick: (ticket: Ticket) => void;
   onReload: () => void;
   companyId?: string; // ID da empresa do usuário
+  adminMode?: boolean; // Se true, mostra opções de admin (ex: gerenciar FAQ)
 }
 
 export const SupportArea: React.FC<SupportAreaProps> = ({
@@ -31,9 +33,10 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
   isLoading,
   onTicketClick,
   onReload,
-  companyId
+  companyId,
+  adminMode = false
 }) => {
-  const [activeTab, setActiveTab] = useState<'orders' | 'tickets' | 'chat' | 'faq'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'tickets' | 'chat' | 'faq' | 'manage-faq'>('orders');
   const [selectedOrder, setSelectedOrder] = useState<CubboOrder | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isTicketFormOpen, setIsTicketFormOpen] = useState(false);
@@ -57,11 +60,14 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
   return (
     <>
     <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-6">
-      <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+      <TabsList className={`grid w-full ${adminMode ? 'grid-cols-2 lg:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4'}`}>
         <TabsTrigger value="orders">📦 Meus Pedidos</TabsTrigger>
         <TabsTrigger value="tickets">🎫 Chamados</TabsTrigger>
         <TabsTrigger value="faq">❓ FAQ</TabsTrigger>
         <TabsTrigger value="chat">💬 Chat Suporte</TabsTrigger>
+        {adminMode && (
+          <TabsTrigger value="manage-faq">⚙️ Gerenciar FAQ</TabsTrigger>
+        )}
       </TabsList>
 
       <TabsContent value="orders" className="min-h-[400px]">
@@ -223,6 +229,12 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
           </CardContent>
         </Card>
       </TabsContent>
+
+      {adminMode && (
+        <TabsContent value="manage-faq" className="min-h-[600px]">
+          <AdminFAQ companyId={companyId} />
+        </TabsContent>
+      )}
     </Tabs>
 
     <Dialog open={isTicketFormOpen} onOpenChange={setIsTicketFormOpen}>

@@ -101,7 +101,33 @@ const tools: FunctionDeclaration[] = [
   }
 ];
 
-const systemInstruction = `Você é um chatbot de suporte amigável, empático e eficiente para a 'Lojinha Prio by Yoobe', uma loja de e-commerce.
+// Função auxiliar para construir contexto do FAQ
+const buildFAQContext = async (companyId?: string): Promise<string> => {
+  try {
+    const faqs = await faqService.getFAQEntries(undefined, companyId);
+    if (faqs.length === 0) return '';
+    
+    const faqText = faqs
+      .map(faq => `Q: ${faq.question}\nR: ${faq.answer}`)
+      .join('\n\n');
+    
+    return `\n\nFAQ DISPONÍVEL (Base de Conhecimento):
+${faqText}
+
+Use estas informações quando o usuário fizer perguntas relacionadas.
+Seja natural e não cite literalmente, mas use o conhecimento para responder de forma amigável.`;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[geminiService] Error building FAQ context:', {
+      companyId,
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    return '';
+  }
+};
+
+const baseSystemInstruction = `Você é um chatbot de suporte amigável, empático e eficiente para a 'Lojinha Prio by Yoobe', uma loja de e-commerce.
 Seu objetivo é ajudar os usuários com rastreamento de pedidos, trocas, reembolsos e perguntas gerais.
 Seja conciso, claro, prestativo e humanizado, fornecendo todas as informações relevantes sobre os pedidos de forma natural e amigável.
 
@@ -361,13 +387,19 @@ Quando o cliente precisar abrir um chamado, identifique o tipo mais apropriado:
 - Use o código do pedido EXATAMENTE como o cliente forneceu (não remova caracteres)
 - Para urgências: EMPATIA + INFORMAÇÕES DE RASTREIO + OFERTA DE CHAMADO`;
 
-
-export const getGeminiResponse = async (history: Message[], userMessage: string) => {
+export const getGeminiResponse = async (history: Message[], userMessage: string, companyId?: string) => {
     // Verificar se a API está disponível
     if (!ai) {
-        console.error("Gemini API não está disponível. Verifique se VITE_GEMINI_API_KEY está configurada.");
+        console.error("[geminiService] Gemini API não está disponível. Verifique se VITE_GEMINI_API_KEY está configurada.", {
+          hasApiKey: !!API_KEY,
+          companyId,
+        });
         return null;
     }
+
+    // Construir contexto do FAQ dinamicamente
+    const faqContext = await buildFAQContext(companyId);
+    const systemInstruction = baseSystemInstruction + faqContext;
 
     const chatHistory = history
       .filter(m => m.sender !== MessageSender.SYSTEM) // Exclude system messages from history for Gemini
@@ -389,7 +421,14 @@ export const getGeminiResponse = async (history: Message[], userMessage: string)
         return response;
 
     } catch (error) {
-        console.error("Error calling Gemini API:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("[geminiService] Error calling Gemini API:", {
+          error: errorMessage,
+          companyId,
+          userMessageLength: userMessage.length,
+          historyLength: history.length,
+          stack: error instanceof Error ? error.stack : undefined,
+        });
         return null;
     }
 };
@@ -417,7 +456,12 @@ export const searchIntelligentFAQ = async (
             companyName = await companyService.getCompanyName(companyId);
             companyGreeting = await companyService.getCompanyGreeting(companyId);
           } catch (error) {
-            console.error('Error fetching company info:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('[geminiService] Error fetching company info:', {
+              companyId,
+              error: errorMessage,
+              stack: error instanceof Error ? error.stack : undefined,
+            });
           }
         }
         
@@ -477,7 +521,7 @@ Resposta:`;
             },
         ];
 
-        const response = await getGeminiResponse(geminiMessages, query);
+        const response = await getGeminiResponse(geminiMessages, query, companyId);
         
         let answer = '';
         if (response && response.text) {
@@ -507,7 +551,13 @@ Resposta:`;
             suggestedQuestions: suggestedQuestions.length > 0 ? suggestedQuestions : undefined,
         };
     } catch (error) {
-        console.error('Error in intelligent FAQ search:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[geminiService] Error in intelligent FAQ search:', {
+          query,
+          companyId,
+          error: errorMessage,
+          stack: error instanceof Error ? error.stack : undefined,
+        });
         
         // Fallback para busca simples
         const faqResults = await faqService.searchFAQ(query, companyId);

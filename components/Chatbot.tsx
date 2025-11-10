@@ -468,7 +468,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
         
         const response = await getGeminiResponse(
             enrichedMessages, 
-            userMessage + contextInfo
+            userMessage + contextInfo,
+            companyId
         );
         setIsLoading(false);
 

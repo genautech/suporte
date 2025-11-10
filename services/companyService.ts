@@ -78,7 +78,12 @@ export const companyService = {
       // Não encontrou empresa específica, retornar "general"
       return 'general';
     } catch (error) {
-      console.error('Error identifying company from email:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[companyService] Error identifying company from email:', {
+        email,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return 'general'; // Fallback seguro
     }
   },
@@ -96,7 +101,12 @@ export const companyService = {
       }
       return null;
     } catch (error) {
-      console.error('Error fetching company:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[companyService] Error fetching company:', {
+        companyId,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return null;
     }
   },
@@ -109,7 +119,11 @@ export const companyService = {
       const snapshot = await getDocs(companiesCollection);
       return snapshot.docs.map(companyFromFirestore);
     } catch (error) {
-      console.error('Error fetching all companies:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[companyService] Error fetching all companies:', {
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return [];
     }
   },
@@ -126,7 +140,12 @@ export const companyService = {
       });
       return docRef.id;
     } catch (error) {
-      console.error('Error creating company:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[companyService] Error creating company:', {
+        error: errorMessage,
+        data: { ...data, domains: data.domains?.length || 0, keywords: data.keywords?.length || 0 },
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   },
@@ -142,7 +161,13 @@ export const companyService = {
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
-      console.error('Error updating company:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[companyService] Error updating company:', {
+        companyId,
+        error: errorMessage,
+        data,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   },
@@ -155,7 +180,12 @@ export const companyService = {
       const docRef = doc(db, 'companies', companyId);
       await deleteDoc(docRef);
     } catch (error) {
-      console.error('Error deleting company:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[companyService] Error deleting company:', {
+        companyId,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   },
@@ -171,7 +201,12 @@ export const companyService = {
       }
       return 'Olá! Como posso ajudar?'; // Saudação padrão
     } catch (error) {
-      console.error('Error fetching company greeting:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[companyService] Error fetching company greeting:', {
+        companyId,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return 'Olá! Como posso ajudar?'; // Fallback
     }
   },
@@ -187,7 +222,12 @@ export const companyService = {
       }
       return 'Suporte Yoobe'; // Nome padrão
     } catch (error) {
-      console.error('Error fetching company name:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[companyService] Error fetching company name:', {
+        companyId,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return 'Suporte Yoobe'; // Fallback
     }
   },

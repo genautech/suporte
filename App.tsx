@@ -9,6 +9,7 @@ import AdminDashboard from './components/AdminDashboard';
 import ManagerDashboard from './components/ManagerDashboard';
 import { auth } from './firebase';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
+import { AdminClientView } from './components/AdminClientView';
 import { Toaster } from './components/ui/toaster';
 
 type AppView = 'home' | 'userLogin' | 'adminLogin' | 'managerLogin';
@@ -21,6 +22,7 @@ const App: React.FC = () => {
     const [isManager, setIsManager] = useState(false);
     const [managerCompanyId, setManagerCompanyId] = useState<string | null>(null);
     const [adminViewMode, setAdminViewMode] = useState<AdminViewMode>('admin');
+    const [adminSelectedCompanyId, setAdminSelectedCompanyId] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -84,8 +86,9 @@ const App: React.FC = () => {
         });
     };
     
-    const handleAdminViewModeChange = (mode: AdminViewMode) => {
+    const handleAdminViewModeChange = (mode: AdminViewMode, companyId?: string) => {
         setAdminViewMode(mode);
+        setAdminSelectedCompanyId(companyId);
     };
 
     if (isLoading) {
@@ -108,38 +111,17 @@ const App: React.FC = () => {
         if (isAdmin) {
             // Admin pode alternar entre visualização admin e cliente
             if (adminViewMode === 'client') {
-                // Criar um usuário mock para o admin visualizar como cliente
-                const mockUser: User = currentUser || {
-                    uid: 'admin-mock-user',
-                    email: 'admin@yoobe.co',
-                    displayName: 'Admin (Modo Cliente)',
-                    phoneNumber: null,
-                    photoURL: null,
-                    emailVerified: false,
-                    isAnonymous: false,
-                    metadata: {} as any,
-                    providerData: [],
-                    refreshToken: '',
-                    tenantId: null,
-                    delete: async () => {},
-                    getIdToken: async () => '',
-                    getIdTokenResult: async () => ({} as any),
-                    reload: async () => {},
-                    toJSON: () => ({}),
-                } as User;
-                return (
-                    <UserDashboard 
-                        user={mockUser} 
-                        onLogout={handleLogout}
-                        adminMode={true}
-                        onSwitchToAdmin={() => handleAdminViewModeChange('admin')}
-                    />
-                );
+                // Usar componente que carrega os dados da empresa assincronamente
+                return <AdminClientView 
+                    adminSelectedCompanyId={adminSelectedCompanyId}
+                    onLogout={handleLogout}
+                    onSwitchToAdmin={() => handleAdminViewModeChange('admin')}
+                />;
             }
             return (
                 <AdminDashboard 
                     onLogout={handleLogout}
-                    onSwitchToClient={() => handleAdminViewModeChange('client')}
+                    onSwitchToClient={(companyId) => handleAdminViewModeChange('client', companyId)}
                 />
             );
         }

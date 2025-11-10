@@ -1,7 +1,8 @@
 # 📋 Checklist de Deploy - Features Locais para Produção
 
-**Data:** 2025-11-06  
-**Status:** ⏳ Aguardando Deploy
+**Data:** 2025-01-XX  
+**Versão:** v1.7.0  
+**Status:** ✅ Pronto para Deploy
 
 ## 🎯 Objetivo
 
@@ -9,15 +10,15 @@ Este checklist documenta todas as features implementadas localmente que precisam
 
 ## ✅ Features Implementadas Localmente
 
-### 1. Sistema de FAQ Completo
+### 1. Sistema de FAQ Completo (v1.7.0 - Multi-tenant)
 
 #### Componentes
 - [x] `FAQArea.tsx` - Área de FAQ para clientes
 - [x] `IntelligentFAQSearch.tsx` - Busca inteligente com Gemini
-- [x] `AdminFAQ.tsx` - CRUD de FAQ no admin
+- [x] `AdminFAQ.tsx` - CRUD de FAQ no admin (atualizado com multi-tenant)
 
 #### Serviços
-- [x] `faqService.ts` - CRUD completo de FAQ
+- [x] `faqService.ts` - CRUD completo de FAQ (suporta companyId)
 - [x] `faqSeedData.ts` - Dados iniciais do FAQ
 
 #### Funcionalidades
@@ -28,6 +29,10 @@ Este checklist documenta todas as features implementadas localmente que precisam
 - [x] Reordenação de FAQs
 - [x] Ativação/desativação de entradas
 - [x] População automática com dados iniciais
+- [x] **FAQ Multi-tenant por Cliente** - FAQs específicas por empresa
+- [x] **Select box de cliente** - Admin pode associar FAQ a cliente específico
+- [x] **Badges visuais** - Mostra qual cliente a FAQ pertence
+- [x] **Filtragem automática** - Clientes veem apenas FAQs da sua empresa + gerais
 
 **Status:** ✅ Pronto para deploy
 
@@ -87,7 +92,7 @@ Este checklist documenta todas as features implementadas localmente que precisam
 
 **Status:** ✅ Pronto para deploy
 
-### 5. Melhorias no Chatbot
+### 5. Melhorias no Chatbot (v1.7.0 - Integração FAQ)
 
 #### Funcionalidades
 - [x] Modo inline no SupportArea
@@ -95,6 +100,42 @@ Este checklist documenta todas as features implementadas localmente que precisam
 - [x] Contexto enriquecido com histórico
 - [x] Tratamento empático de urgências
 - [x] Sistema de feedback
+- [x] **Integração FAQ com Gemini AI** - Contexto do FAQ disponível para aprendizado
+- [x] **Filtragem por cliente** - Gemini recebe apenas FAQs relevantes ao cliente
+
+**Status:** ✅ Pronto para deploy
+
+### 6. Visualização Admin como Cliente (v1.7.0)
+
+#### Componentes
+- [x] `AdminClientView.tsx` - Novo componente para visualização admin como cliente
+- [x] `AdminDashboard.tsx` - Select box para escolher cliente
+- [x] `UserDashboard.tsx` - Suporte para `adminSelectedCompanyId` e `adminMode`
+
+#### Funcionalidades
+- [x] Admin pode selecionar cliente antes de visualizar
+- [x] Perfil mostra dados corretos do cliente selecionado
+- [x] Aba "Gerenciar FAQ" disponível quando admin visualiza como cliente
+- [x] Admin pode criar/editar FAQs do cliente selecionado
+
+**Status:** ✅ Pronto para deploy
+
+### 7. Correções de Bugs (v1.7.0)
+
+#### Problemas Corrigidos
+- [x] Select boxes não abrem - Corrigido (z-index + modal={false})
+- [x] Perfil mostra dados do admin - Corrigido (AdminClientView)
+- [x] Manager não consegue criar/editar FAQ - Corrigido (lógica companyId)
+
+**Status:** ✅ Pronto para deploy
+
+### 8. Logs de Erro Melhorados (v1.7.0)
+
+#### Melhorias
+- [x] Logs com prefixo do serviço (`[faqService]`, `[geminiService]`, etc.)
+- [x] Contexto completo nos logs (companyId, id, etc.)
+- [x] Stack trace quando disponível
+- [x] Mensagens de erro mais descritivas
 
 **Status:** ✅ Pronto para deploy
 
@@ -129,11 +170,12 @@ Este checklist documenta todas as features implementadas localmente que precisam
 ### Índices Firestore (Recomendados)
 
 - [ ] `faq`: `category` + `order` (composite)
+- [ ] `faq`: `companyId` + `active` + `order` (composite) - **NOVO para v1.7.0**
 - [ ] `knowledgeBase`: `category` + `verified` + `createdAt` (composite)
 - [ ] `conversations`: `userId` + `createdAt` (composite)
 - [ ] `authCodes`: `email` + `createdAt` (composite)
 
-**Nota:** Os serviços têm fallback em memória se índices não existirem, mas índices melhoram performance.
+**Nota:** Os serviços têm fallback em memória se índices não existirem, mas índices melhoram performance significativamente.
 
 ### Proxies Cloud Run
 
@@ -179,7 +221,7 @@ gcloud run deploy suporte-lojinha \
 
 ## 🎯 Checklist de Features para Testar em Produção
 
-### FAQ
+### FAQ (v1.7.0 - Multi-tenant)
 
 - [ ] FAQ carrega todas as categorias
 - [ ] Busca por texto funciona
@@ -191,6 +233,11 @@ gcloud run deploy suporte-lojinha \
 - [ ] Admin pode reordenar FAQs
 - [ ] Admin pode ativar/desativar FAQs
 - [ ] Botão "Popular FAQ" funciona
+- [ ] **Admin pode selecionar cliente ao criar FAQ**
+- [ ] **Admin pode criar FAQ como "Geral" (visível para todos)**
+- [ ] **Manager pode criar/editar FAQs da sua empresa**
+- [ ] **Cliente vê apenas FAQs da sua empresa + FAQs gerais**
+- [ ] **Badges mostram corretamente qual cliente a FAQ pertence**
 
 ### Base de Conhecimento
 
@@ -212,7 +259,7 @@ gcloud run deploy suporte-lojinha \
 - [ ] Ticket é criado com informações corretas
 - [ ] Todos os 9 assuntos têm configurações corretas
 
-### Chatbot e Conversas
+### Chatbot e Conversas (v1.7.0 - Integração FAQ)
 
 - [ ] Chatbot abre corretamente (modo flutuante e inline)
 - [ ] Histórico de conversas carrega
@@ -222,6 +269,23 @@ gcloud run deploy suporte-lojinha \
 - [ ] Contador de tentativas funciona
 - [ ] Relacionamento pedido-conversa funciona
 - [ ] Busca inteligente de FAQ funciona no chatbot
+- [ ] **Chatbot usa contexto do FAQ nas respostas**
+- [ ] **FAQ específica da empresa aparece no contexto do chatbot**
+- [ ] **FAQ geral aparece para todos os clientes**
+
+### Visualização Admin como Cliente (v1.7.0)
+
+- [ ] Select box de cliente aparece no AdminDashboard
+- [ ] Admin pode selecionar cliente antes de visualizar
+- [ ] Perfil mostra dados corretos do cliente selecionado
+- [ ] Aba "Gerenciar FAQ" aparece quando admin visualiza como cliente
+- [ ] Admin pode criar/editar FAQs do cliente selecionado
+
+### Select Boxes (v1.7.0 - Correção)
+
+- [ ] Todos os select boxes abrem corretamente
+- [ ] Select boxes funcionam dentro de Dialogs
+- [ ] Select boxes aparecem sobre outros elementos (z-index correto)
 
 ### Autenticação
 
@@ -233,13 +297,16 @@ gcloud run deploy suporte-lojinha \
 
 ## 📊 Resumo de Status
 
-### Features Prontas para Deploy
+### Features Prontas para Deploy (v1.7.0)
 
-- ✅ Sistema de FAQ Completo
+- ✅ Sistema de FAQ Completo (Multi-tenant)
 - ✅ Base de Conhecimento
 - ✅ Formulário Dinâmico de Tickets
 - ✅ Sistema de Conversas do Chatbot
-- ✅ Melhorias no Chatbot
+- ✅ Melhorias no Chatbot (Integração FAQ)
+- ✅ Visualização Admin como Cliente
+- ✅ Correções de Bugs (Select boxes, Perfil, Manager FAQ)
+- ✅ Logs de Erro Melhorados
 - ✅ Firebase Auth Reset Proxy (já deployado)
 
 ### Verificações Pendentes
@@ -259,6 +326,12 @@ gcloud run deploy suporte-lojinha \
 
 ---
 
-**Última Atualização:** 2025-11-06  
-**Status:** ⏳ Aguardando Deploy
+**Última Atualização:** 2025-01-XX  
+**Versão:** v1.7.0  
+**Status:** ✅ Pronto para Deploy
+
+**Ver também:**
+- `DEPLOY_v1.7.0.md` - Guia completo de deploy desta versão
+- `CHANGELOG.md` - Histórico completo de mudanças
+- `TROUBLESHOOTING.md` - Guia de troubleshooting
 

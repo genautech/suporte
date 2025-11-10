@@ -227,7 +227,7 @@ export const AdminKnowledgeBase: React.FC<{ companyId?: string }> = ({ companyId
                   <SelectTrigger className="w-[180px]">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[10000]">
                     <SelectItem value="all">Todas</SelectItem>
                     <SelectItem value="verified">Verificadas</SelectItem>
                     <SelectItem value="unverified">Não Verificadas</SelectItem>
@@ -240,7 +240,7 @@ export const AdminKnowledgeBase: React.FC<{ companyId?: string }> = ({ companyId
                   <SelectTrigger className="w-[180px]">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[10000]">
                     <SelectItem value="all">Todas Categorias</SelectItem>
                     {categories.map(cat => (
                       <SelectItem key={cat} value={cat}>

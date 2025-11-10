@@ -24,9 +24,10 @@ interface UserDashboardProps {
   onLogout: () => void;
   adminMode?: boolean;
   onSwitchToAdmin?: () => void;
+  adminSelectedCompanyId?: string; // CompanyId selecionado pelo admin para visualização
 }
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode = false, onSwitchToAdmin }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode = false, onSwitchToAdmin, adminSelectedCompanyId }) => {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [orders, setOrders] = useState<CubboOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,13 +56,24 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
   }, [user]);
 
   useEffect(() => {
+    // Atualizar profileUser quando user mudar
+    setProfileUser(user);
+    
     if (!user.displayName || !user.email) {
       setIsProfileModalOpen(true);
     }
     loadData();
     
     // Detectar empresa do usuário
-    if (user.email) {
+    // Se admin selecionou um cliente específico, usar esse; senão, detectar pelo email
+    if (adminSelectedCompanyId) {
+      setCompanyId(adminSelectedCompanyId);
+      if (adminSelectedCompanyId !== 'general') {
+        companyService.getCompanyName(adminSelectedCompanyId).then((name) => {
+          setCompanyName(name);
+        });
+      }
+    } else if (user.email) {
       companyService.getCompanyFromEmail(user.email).then((id) => {
         setCompanyId(id);
         if (id && id !== 'general') {
@@ -71,7 +83,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
         }
       });
     }
-  }, [user, loadData]);
+  }, [user, loadData, adminSelectedCompanyId]);
 
   const handleViewTicket = (ticket: Ticket) => {
     setSelectedTicket(ticket);
@@ -176,6 +188,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
             onTicketClick={handleViewTicket}
             onReload={loadData}
             companyId={companyId}
+            adminMode={adminMode}
           />
         </main>
       </div>

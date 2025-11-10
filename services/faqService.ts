@@ -71,7 +71,13 @@ export const faqService = {
           return (a.createdAt || 0) - (b.createdAt || 0);
         });
     } catch (error) {
-      console.error('Error fetching FAQ entries:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error fetching FAQ entries:', {
+        error: errorMessage,
+        category,
+        companyId,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       // Fallback: buscar todos sem filtros e ordenar em memória
       try {
         const snapshot = await getDocs(faqCollection);
@@ -94,7 +100,13 @@ export const faqService = {
             return (a.createdAt || 0) - (b.createdAt || 0);
           });
       } catch (fallbackError) {
-        console.error('Error in fallback fetch:', fallbackError);
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        console.error('[faqService] Error in fallback fetch:', {
+          error: fallbackMessage,
+          category,
+          companyId,
+          stack: fallbackError instanceof Error ? fallbackError.stack : undefined,
+        });
         return [];
       }
     }
@@ -110,7 +122,12 @@ export const faqService = {
       }
       return null;
     } catch (error) {
-      console.error('Error fetching FAQ entry:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error fetching FAQ entry:', {
+        id,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return null;
     }
   },
@@ -138,7 +155,12 @@ export const faqService = {
       const docRef = await addDoc(faqCollection, newEntry);
       return docRef.id;
     } catch (error) {
-      console.error('Error creating FAQ entry:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error creating FAQ entry:', {
+        error: errorMessage,
+        data: { ...data, companyId: data.companyId || 'general' },
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   },
@@ -151,7 +173,13 @@ export const faqService = {
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
-      console.error('Error updating FAQ entry:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error updating FAQ entry:', {
+        id,
+        error: errorMessage,
+        data,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   },
@@ -161,7 +189,12 @@ export const faqService = {
       const docRef = doc(db, 'faq', id);
       await deleteDoc(docRef);
     } catch (error) {
-      console.error('Error deleting FAQ entry:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error deleting FAQ entry:', {
+        id,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   },
@@ -202,7 +235,13 @@ export const faqService = {
         .map(item => item.entry)
         .slice(0, 10); // Limitar a 10 resultados
     } catch (error) {
-      console.error('Error searching FAQ:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error searching FAQ:', {
+        query: queryText,
+        companyId,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return [];
     }
   },
@@ -214,7 +253,12 @@ export const faqService = {
         views: increment(1),
       });
     } catch (error) {
-      console.error('Error incrementing FAQ views:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error incrementing FAQ views:', {
+        id,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       // Não lançar erro, é uma operação não crítica
     }
   },
@@ -226,7 +270,12 @@ export const faqService = {
         helpful: increment(1),
       });
     } catch (error) {
-      console.error('Error marking FAQ as helpful:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error marking FAQ as helpful:', {
+        id,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       // Não lançar erro, é uma operação não crítica
     }
   },
@@ -247,7 +296,12 @@ export const faqService = {
       
       return allEntries;
     } catch (error) {
-      console.error('Error fetching all FAQ entries:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error fetching all FAQ entries:', {
+        companyId,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return [];
     }
   },
@@ -265,7 +319,12 @@ export const faqService = {
 
       await Promise.all(updates);
     } catch (error) {
-      console.error('Error reordering FAQ entries:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[faqService] Error reordering FAQ entries:', {
+        entriesCount: entries.length,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   },

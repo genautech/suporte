@@ -261,7 +261,7 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
               <SelectTrigger id={field.name} className="w-full">
                 <SelectValue placeholder={field.placeholder || `Selecione ${field.label.toLowerCase()}`} />
               </SelectTrigger>
-              <SelectContent className="z-[100]">
+              <SelectContent className="z-[10000]">
                 {field.options?.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
@@ -398,7 +398,7 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
               <SelectTrigger id="subject-select" className="w-full">
                 <SelectValue placeholder="Selecione o assunto" />
               </SelectTrigger>
-              <SelectContent className="z-[100]">
+              <SelectContent className="z-[10000]">
                 {Object.entries(subjectLabels).map(([value, label]) => (
                   <SelectItem key={value} value={value}>
                     {label}
