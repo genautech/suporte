@@ -9,6 +9,7 @@ import { AdminOrders } from './AdminOrders';
 import { AdminFAQ } from './AdminFAQ';
 import { AdminKnowledgeBase } from './AdminKnowledgeBase';
 import { AdminCompanies } from './AdminCompanies';
+import { AdminConversations } from './AdminConversations';
 import { companyService } from '../services/companyService';
 import { Company } from '../types';
 import { BrainIcon, LogoutIcon, MessageIcon } from './Icons'; // MessageIcon added
@@ -27,7 +28,7 @@ import {
 } from './ui/select';
 import { motion } from 'framer-motion';
 
-type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados' | 'companies';
+type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados' | 'companies' | 'conversations';
 
 interface AdminDashboardProps {
     onLogout: () => void;
@@ -354,6 +355,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 return <AdminKnowledgeBase />;
             case 'companies':
                 return <AdminCompanies />;
+            case 'conversations':
+                return <AdminConversations />;
             case 'chatbot': // New view for chatbot testing
                 return (
                      <div className="animate-fade-in h-full flex flex-col items-center justify-center">
@@ -478,6 +481,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                     >
                         <span>🏢</span>
                         Empresas
+                    </motion.a>
+                    <motion.a 
+                        onClick={() => setView('conversations')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'conversations' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>💬</span>
+                        Conversas & Usuários
                     </motion.a>
                     <motion.a 
                         onClick={() => setView('arquivados')} 

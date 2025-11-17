@@ -127,3 +127,8 @@ gcloud run services logs read postmark-email-proxy \
 - Documentação API: https://postmarkapp.com/developer/api/email-api
 - Verificar Supressões: https://account.postmarkapp.com/servers/.../suppressions
 
+
+
+
+
+

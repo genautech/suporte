@@ -50,3 +50,8 @@ echo ""
 echo -e "${GREEN}✅ Teste concluído!${NC}"
 echo -e "${YELLOW}💡 Verifique a caixa de entrada de ${TEST_EMAIL} (e spam)${NC}"
 
+
+
+
+
+

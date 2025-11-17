@@ -80,3 +80,8 @@ echo "   gcloud run services logs read cubbo-auth-proxy --region southamerica-ea
 
 
 
+
+
+
+
+

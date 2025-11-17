@@ -57,7 +57,7 @@ export const TicketForm: React.FC<TicketFormProps> = ({ ticket, onSubmit }) => {
       setFormData(editableData);
       // Tentar identificar o assunto do ticket existente
       const subjectKey = Object.keys(subjectLabels).find(
-        key => subjectLabels[key as TicketSubject].toLowerCase() === ticket.subject.toLowerCase()
+        key => ticket.subject && subjectLabels[key as TicketSubject].toLowerCase() === ticket.subject.toLowerCase()
       ) as TicketSubject | undefined;
       if (subjectKey) {
         setSelectedSubject(subjectKey);

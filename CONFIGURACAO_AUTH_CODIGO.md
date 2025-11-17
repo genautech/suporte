@@ -156,7 +156,7 @@ npm run dev
 
 1. Verifique sua caixa de entrada (e spam)
 2. Você deve receber um email com:
-   - Assunto: "Seu código de acesso - Portal de Suporte"
+   - Assunto: "Seu código de acesso - Portal de Suporte Loja Corporativa"
    - Código de 4 dígitos destacado
    - Instruções de uso
 

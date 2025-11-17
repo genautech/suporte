@@ -23,10 +23,10 @@ console.log(`Stream: outbound\n`);
 const postmarkBody = {
     From: FROM_EMAIL,
     To: TEST_EMAIL,
-    Subject: 'Teste de Email - Portal de Suporte',
+    Subject: 'Teste de Email - Portal de Suporte Loja Corporativa',
     HtmlBody: `
         <h2>Teste de Email</h2>
-        <p>Este é um email de teste do Portal de Suporte.</p>
+        <p>Este é um email de teste do Portal de Suporte Loja Corporativa.</p>
         <p>Se você recebeu este email, o sistema de envio está funcionando corretamente!</p>
         <hr>
         <p><small>Enviado em: ${new Date().toLocaleString('pt-BR')}</small></p>

@@ -200,3 +200,8 @@ Revisão completa do sistema para corrigir conflitos entre DaisyUI e Shadcn/ui, 
 
 **Nota:** Todas as melhorias foram implementadas sem quebrar funcionalidades existentes. O sistema está visualmente muito mais moderno e elegante, mantendo total compatibilidade com o código existente.
 
+
+
+
+
+

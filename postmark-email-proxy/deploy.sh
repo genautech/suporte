@@ -67,3 +67,8 @@ echo ""
 echo "A URL do serviço será exibida acima."
 echo "Copie a URL e atualize o arquivo services/supportService.ts"
 
+
+
+
+
+

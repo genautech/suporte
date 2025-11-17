@@ -57,3 +57,8 @@ Após configurar o Store ID:
 - Sem o Store ID configurado, não é possível buscar pedidos na API Cubbo
 - Certifique-se de digitar o Store ID corretamente (sem espaços extras)
 
+
+
+
+
+

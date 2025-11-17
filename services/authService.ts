@@ -272,7 +272,7 @@ export const sendAuthCodeEmail = async (email: string, code: string): Promise<{ 
   const EMAIL_PROXY_URL = ((import.meta as any).env?.VITE_POSTMARK_PROXY_URL as string) || 
     'https://postmark-email-proxy-409489811769.southamerica-east1.run.app';
   
-  const subject = 'Seu código de acesso - Portal de Suporte';
+  const subject = 'Seu código de acesso - Portal de Suporte Loja Corporativa';
   const htmlBody = `
     <!DOCTYPE html>
     <html>
@@ -318,7 +318,7 @@ export const sendAuthCodeEmail = async (email: string, code: string): Promise<{ 
     </head>
     <body>
       <h2>Olá!</h2>
-      <p>Você solicitou acesso ao Portal de Suporte. Use o código abaixo para fazer login:</p>
+      <p>Você solicitou acesso ao Portal de Suporte Loja Corporativa. Use o código abaixo para fazer login:</p>
       
       <div class="code-container">
         <div class="code">${code}</div>
@@ -331,7 +331,7 @@ export const sendAuthCodeEmail = async (email: string, code: string): Promise<{ 
       <p>Se você não solicitou este código, pode ignorar este e-mail com segurança.</p>
       
       <div class="footer">
-        <p>Portal de Suporte - Suporte Lojinha Prio</p>
+        <p>Portal de Suporte Loja Corporativa</p>
         <p>Este é um e-mail automático, por favor não responda.</p>
       </div>
     </body>

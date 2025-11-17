@@ -151,6 +151,11 @@ export interface Conversation {
   orderNumbers: string[]; // Array de pedidos mencionados na conversa
   resolved: boolean; // Se a conversa foi resolvida
   companyId?: string; // ID da empresa (identificado pelo email do usuário, opcional para compatibilidade)
+  assignedCompanyId?: string; // CompanyId atribuído manualmente (quando domínio não corresponde automaticamente)
+  supportUserId?: string; // ID do SupportUser relacionado
+  ticketId?: string; // ID do ticket criado a partir desta conversa
+  archived?: boolean; // Se a conversa foi arquivada
+  aiInsights?: ConversationAIInsights; // Insights gerados pelo Gemini AI
   feedback?: {
     rating: number; // 1-5 estrelas
     comment?: string;
@@ -246,4 +251,33 @@ export interface UserRoleData {
   role: UserRole;
   companyId?: string;  // Se manager, qual empresa
   createdAt: number;
+}
+
+// Support User tracking
+export interface SupportUser {
+  id?: string;
+  email: string; // Email do usuário (chave única)
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  firstAccessAt: number; // Timestamp do primeiro acesso
+  lastAccessAt: number; // Timestamp do último acesso
+  lastInteractionAt?: number; // Timestamp da última interação via chat
+  totalLogins: number; // Contador de logins
+  totalConversations: number; // Total de conversas iniciadas
+  totalTickets: number; // Total de tickets criados
+  assignedCompanyId?: string; // CompanyId atribuído manualmente (quando domínio não corresponde)
+  autoDetectedCompanyId?: string; // CompanyId detectado automaticamente pelo domínio
+  createdAt: number;
+  updatedAt: number;
+}
+
+// AI Insights para conversas
+export interface ConversationAIInsights {
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  problemType?: string; // Tipo de problema identificado
+  resolution?: string; // Como foi resolvido
+  summary?: string; // Resumo da conversa
+  keywords?: string[]; // Palavras-chave extraídas
+  analyzedAt?: number; // Timestamp da análise
 }

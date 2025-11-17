@@ -34,7 +34,7 @@ app.post('/', async (req, res) => {
         return res.status(500).json({ error: 'Configuração do servidor de e-mail incompleta.' });
     }
 
-    const { to, subject, htmlBody } = req.body;
+    const { to, subject, htmlBody, cc, bcc } = req.body;
 
     if (!to || !subject || !htmlBody) {
         console.error('[POSTMARK PROXY] Campos faltando:', { to: !!to, subject: !!subject, htmlBody: !!htmlBody });
@@ -49,11 +49,23 @@ app.post('/', async (req, res) => {
         MessageStream: "outbound"
     };
 
+    // Adicionar CC se fornecido
+    if (cc) {
+        postmarkBody.Cc = cc;
+    }
+
+    // Adicionar BCC se fornecido
+    if (bcc) {
+        postmarkBody.Bcc = bcc;
+    }
+
     try {
         console.log('[POSTMARK PROXY] Enviando para Postmark API:', {
             from: FROM_EMAIL,
             to: to,
-            subject: subject
+            subject: subject,
+            cc: cc || 'não fornecido',
+            bcc: bcc || 'não fornecido'
         });
         
         const postmarkResponse = await fetch('https://api.postmarkapp.com/email', {

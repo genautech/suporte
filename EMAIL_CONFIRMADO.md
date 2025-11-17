@@ -63,3 +63,8 @@ cd postmark-email-proxy
 ./deploy.sh ee246569-f54b-4986-937a-9288b25377f4 atendimento@yoobe.co
 ```
 
+
+
+
+
+

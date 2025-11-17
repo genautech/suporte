@@ -118,7 +118,7 @@ export const AdminKnowledgeBase: React.FC<{ companyId?: string }> = ({ companyId
       title: entry.title,
       content: entry.content,
       category: entry.category,
-      tags: entry.tags.join(', '),
+      tags: (entry.tags || []).join(', '),
       verified: entry.verified,
     });
     setIsDialogOpen(true);

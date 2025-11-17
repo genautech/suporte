@@ -63,6 +63,9 @@ export const conversationService = {
         resolved: false,
         attempts: 0,
         companyId: companyId || 'general', // Adicionar companyId
+        assignedCompanyId: undefined, // Será atribuído manualmente se necessário
+        supportUserId: undefined, // Será vinculado ao SupportUser se existir
+        aiInsights: undefined, // Será preenchido pela análise do Gemini
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -218,6 +221,179 @@ export const conversationService = {
     }
     
     return true;
+  },
+
+  // Listar todas as conversas (para admin)
+  getAllConversations: async (limitCount?: number, includeArchived: boolean = false): Promise<Conversation[]> => {
+    try {
+      let q = query(
+        conversationsCollection,
+        orderBy('createdAt', 'desc')
+      );
+      
+      if (limitCount) {
+        q = query(q, limit(limitCount));
+      }
+      
+      const querySnapshot = await getDocs(q);
+      let conversations = querySnapshot.docs.map(conversationFromFirestore);
+      
+      // Filtrar arquivadas se não incluir
+      if (!includeArchived) {
+        conversations = conversations.filter(conv => !conv.archived);
+      }
+      
+      return conversations;
+    } catch (error) {
+      console.error('[conversationService] Erro ao listar conversas:', error);
+      return [];
+    }
+  },
+
+  // Listar conversas por empresa
+  getConversationsByCompany: async (companyId: string, limitCount?: number): Promise<Conversation[]> => {
+    try {
+      // Buscar por companyId ou assignedCompanyId
+      const q1 = query(
+        conversationsCollection,
+        where('companyId', '==', companyId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const q2 = query(
+        conversationsCollection,
+        where('assignedCompanyId', '==', companyId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      let queries = [getDocs(q1), getDocs(q2)];
+      
+      if (limitCount) {
+        const limitedQ1 = query(q1, limit(limitCount));
+        const limitedQ2 = query(q2, limit(limitCount));
+        queries = [getDocs(limitedQ1), getDocs(limitedQ2)];
+      }
+      
+      const [snapshot1, snapshot2] = await Promise.all(queries);
+      
+      // Combinar resultados e remover duplicatas
+      const allDocs = [...snapshot1.docs, ...snapshot2.docs];
+      const uniqueDocs = Array.from(
+        new Map(allDocs.map(doc => [doc.id, doc])).values()
+      );
+      
+      return uniqueDocs.map(conversationFromFirestore);
+    } catch (error) {
+      console.error('[conversationService] Erro ao buscar conversas por empresa:', error);
+      return [];
+    }
+  },
+
+  // Listar conversas sem empresa atribuída (indefinidas)
+  getUndefinedConversations: async (limitCount?: number): Promise<Conversation[]> => {
+    try {
+      const allConversations = await conversationService.getAllConversations(undefined, false);
+      const undefinedConversations = allConversations.filter(conv => 
+        (!conv.companyId || conv.companyId === 'general') && 
+        !conv.assignedCompanyId &&
+        !conv.archived
+      );
+      
+      if (limitCount) {
+        return undefinedConversations.slice(0, limitCount);
+      }
+      
+      return undefinedConversations;
+    } catch (error) {
+      console.error('[conversationService] Erro ao buscar conversas indefinidas:', error);
+      return [];
+    }
+  },
+
+  // Atribuir empresa a uma conversa manualmente
+  assignCompanyToConversation: async (conversationId: string, companyId: string): Promise<void> => {
+    try {
+      await conversationService.updateConversation(conversationId, {
+        assignedCompanyId: companyId,
+      });
+    } catch (error) {
+      console.error('[conversationService] Erro ao atribuir empresa à conversa:', error);
+      throw error;
+    }
+  },
+
+  // Arquivar uma conversa
+  archiveConversation: async (conversationId: string): Promise<void> => {
+    try {
+      await conversationService.updateConversation(conversationId, {
+        archived: true,
+      });
+    } catch (error) {
+      console.error('[conversationService] Erro ao arquivar conversa:', error);
+      throw error;
+    }
+  },
+
+  // Desarquivar uma conversa
+  unarchiveConversation: async (conversationId: string): Promise<void> => {
+    try {
+      await conversationService.updateConversation(conversationId, {
+        archived: false,
+      });
+    } catch (error) {
+      console.error('[conversationService] Erro ao desarquivar conversa:', error);
+      throw error;
+    }
+  },
+
+  // Vincular ticket a uma conversa
+  linkTicketToConversation: async (conversationId: string, ticketId: string): Promise<void> => {
+    try {
+      await conversationService.updateConversation(conversationId, {
+        ticketId: ticketId,
+      });
+    } catch (error) {
+      console.error('[conversationService] Erro ao vincular ticket:', error);
+      throw error;
+    }
+  },
+
+  // Obter estatísticas de conversas
+  getStatistics: async (): Promise<{
+    totalConversations: number;
+    resolvedConversations: number;
+    unresolvedConversations: number;
+    conversationsLast7Days: number;
+    conversationsLast30Days: number;
+    undefinedConversations: number;
+  }> => {
+    try {
+      const allConversations = await conversationService.getAllConversations(undefined, false);
+      const now = Date.now();
+      const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+      const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+      
+      return {
+        totalConversations: allConversations.length,
+        resolvedConversations: allConversations.filter(c => c.resolved).length,
+        unresolvedConversations: allConversations.filter(c => !c.resolved).length,
+        conversationsLast7Days: allConversations.filter(c => c.createdAt >= sevenDaysAgo).length,
+        conversationsLast30Days: allConversations.filter(c => c.createdAt >= thirtyDaysAgo).length,
+        undefinedConversations: allConversations.filter(c => 
+          (!c.companyId || c.companyId === 'general') && !c.assignedCompanyId
+        ).length,
+      };
+    } catch (error) {
+      console.error('[conversationService] Erro ao obter estatísticas:', error);
+      return {
+        totalConversations: 0,
+        resolvedConversations: 0,
+        unresolvedConversations: 0,
+        conversationsLast7Days: 0,
+        conversationsLast30Days: 0,
+        undefinedConversations: 0,
+      };
+    }
   },
 };
 

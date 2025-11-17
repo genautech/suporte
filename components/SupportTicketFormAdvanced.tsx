@@ -24,6 +24,7 @@ interface SupportTicketFormAdvancedProps {
   defaultSubject?: TicketSubject;
   onSubmit: (ticketId: string) => void;
   onClose: () => void;
+  skipRequiredValidation?: boolean; // Quando true, ignora validação de campos obrigatórios
 }
 
 const subjectLabels: Record<TicketSubject, string> = {
@@ -43,15 +44,23 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
   defaultSubject,
   onSubmit,
   onClose,
+  skipRequiredValidation = false,
 }) => {
   const [subject, setSubject] = useState<TicketSubject>(defaultSubject || 'outro');
   const [formConfig, setFormConfig] = useState<TicketFormConfig | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({
-    name: initialData.name,
-    email: initialData.email,
+    name: initialData.name || '',
+    email: initialData.email || '',
     phone: initialData.phone || '',
     orderNumber: initialData.orderNumber || '',
   });
+  
+  // Garantir que email seja válido
+  useEffect(() => {
+    if (initialData.email && initialData.email.trim()) {
+      setFormData(prev => ({ ...prev, email: initialData.email.trim() }));
+    }
+  }, [initialData.email]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [orderPreview, setOrderPreview] = useState<any>(null);
@@ -120,7 +129,8 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
   };
 
   const validateField = (field: FormField, value: any): string | null => {
-    if (field.required && (!value || value.toString().trim() === '')) {
+    // Se skipRequiredValidation estiver ativo, não validar campos obrigatórios
+    if (!skipRequiredValidation && field.required && (!value || value.toString().trim() === '')) {
       return `${field.label} é obrigatório`;
     }
 
@@ -147,6 +157,12 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevenir múltiplos envios
+    if (isLoading) {
+      return;
+    }
+    
     setError('');
 
     if (!formConfig) {
@@ -154,19 +170,21 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
       return;
     }
 
-    // Validar campos obrigatórios
+    // Validar campos obrigatórios (apenas se skipRequiredValidation for false)
     const validationErrors: string[] = [];
-    formConfig.fields.forEach(field => {
-      const value = formData[field.name];
-      const error = validateField(field, value);
-      if (error) {
-        validationErrors.push(error);
-      }
-    });
+    if (!skipRequiredValidation) {
+      formConfig.fields.forEach(field => {
+        const value = formData[field.name];
+        const error = validateField(field, value);
+        if (error) {
+          validationErrors.push(error);
+        }
+      });
 
-    if (validationErrors.length > 0) {
-      setError(validationErrors.join(', '));
-      return;
+      if (validationErrors.length > 0) {
+        setError(validationErrors.join(', '));
+        return;
+      }
     }
 
     // Construir subject e description a partir dos dados do formulário
@@ -182,18 +200,21 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
     
     // Se for "outro", usar o campo description diretamente
     if (subject === 'outro') {
-      description = formData.description || formConfig.questions.join('\n\n');
+      description = formData.description || (formConfig?.questions || []).join('\n\n');
     } else {
       // Para outros assuntos, construir a descrição a partir das perguntas e campos
       const descriptionParts: string[] = [];
       
       // Adicionar perguntas e respostas
-      formConfig.questions.forEach((question) => {
-        descriptionParts.push(question);
-      });
+      if (formConfig?.questions && Array.isArray(formConfig.questions)) {
+        formConfig.questions.forEach((question) => {
+          descriptionParts.push(question);
+        });
+      }
       
       // Adicionar campos preenchidos
-      formConfig.fields.forEach((field) => {
+      if (formConfig?.fields && Array.isArray(formConfig.fields)) {
+        formConfig.fields.forEach((field) => {
         if (formData[field.name] && field.name !== 'orderNumber') {
           const value = formData[field.name];
           let displayValue = value;
@@ -208,26 +229,41 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
           
           descriptionParts.push(`${field.label}: ${displayValue}`);
         }
-      });
+        });
+      }
       
       description = descriptionParts.join('\n\n');
     }
 
+    // Validar que email não está vazio antes de criar ticket (apenas se skipRequiredValidation for false)
+    const emailToUse = (formData.email || initialData.email || '').trim();
+    if (!skipRequiredValidation && !emailToUse) {
+      setError('Por favor, informe seu email para criar o chamado.');
+      return;
+    }
+    
+    // Se não houver email e skipRequiredValidation estiver ativo, usar o email do initialData ou um padrão
+    const finalEmail = emailToUse || (skipRequiredValidation ? (initialData.email || 'admin@suporte.com') : '');
+    if (!finalEmail) {
+      setError('Por favor, informe seu email para criar o chamado.');
+      return;
+    }
+    
     setIsLoading(true);
     try {
       console.log('[SupportTicketFormAdvanced] Criando ticket com:', {
         subject: ticketSubject,
-        description: description.substring(0, 100) + '...',
+        description: (description || '').substring(0, 100) + '...',
         name: formData.name,
-        email: formData.email,
+        email: finalEmail,
         orderNumber: formData.orderNumber,
       });
       
       const ticketId = await supportService.createTicket({
         subject: ticketSubject,
         description,
-        name: formData.name,
-        email: formData.email,
+        name: formData.name || 'Cliente',
+        email: finalEmail,
         phone: formData.phone || undefined,
         orderNumber: formData.orderNumber || undefined,
         priority: subject === 'produto_nao_recebido' || subject === 'produto_defeituoso' ? 'alta' : 'media',
@@ -432,6 +468,18 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
             <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm">
               <p className="font-semibold">Pedido relacionado: {orderPreview.order_number}</p>
               <p className="text-muted-foreground">Status: {orderPreview.status}</p>
+              {orderPreview.items && orderPreview.items.length > 0 && orderPreview.items.some((item: any) => item.sku) && (
+                <div className="mt-2">
+                  <p className="text-muted-foreground text-xs mb-1">SKUs disponíveis:</p>
+                  <p className="text-xs font-mono">
+                    {orderPreview.items
+                      .filter((item: any) => item.sku)
+                      .map((item: any) => item.sku)
+                      .filter((sku: string, index: number, self: string[]) => self.indexOf(sku) === index)
+                      .join(', ')}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

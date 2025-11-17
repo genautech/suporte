@@ -4,7 +4,7 @@ import { User } from 'firebase/auth';
 import { Ticket, CubboOrder } from '../types';
 import { supportService } from '../services/supportService';
 import { companyService } from '../services/companyService';
-import { Chatbot } from './Chatbot';
+import { userService } from '../services/userService';
 import { SupportArea } from './SupportArea';
 import { TicketDetailModal } from './TicketDetailModal';
 import { ProfileModal } from './ProfileModal';
@@ -63,6 +63,18 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
       setIsProfileModalOpen(true);
     }
     loadData();
+    
+    // Registrar login do usuário
+    if (user.email) {
+      userService.recordLogin(user.email, {
+        firstName: user.displayName?.split(' ')[0],
+        lastName: user.displayName?.split(' ').slice(1).join(' '),
+        phone: user.phoneNumber || undefined,
+      }).catch(error => {
+        console.error('[UserDashboard] Erro ao registrar login:', error);
+        // Não bloquear o fluxo se houver erro
+      });
+    }
     
     // Detectar empresa do usuário
     // Se admin selecionou um cliente específico, usar esse; senão, detectar pelo email
@@ -192,18 +204,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
           />
         </main>
       </div>
-
-      {/* Chatbot flutuante apenas quando não estiver na aba chat */}
-      <Chatbot 
-        user={{
-            name: profileUser.displayName || '',
-            email: profileUser.email || '',
-            phone: profileUser.phoneNumber || ''
-        }}
-        companyId={companyId}
-        onTicketCreated={loadData}
-        inline={false}
-      />
       
       {selectedTicket && (
         <TicketDetailModal 

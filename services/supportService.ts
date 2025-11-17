@@ -18,6 +18,7 @@ import {
 import { Ticket, TicketStatus, KnowledgeBase, ApiConfig, CubboOrder, PickupLocation, TicketSubject, TicketFormConfig } from '../types';
 import { getTicketFormConfig } from '../data/ticketFormConfigs';
 import { companyService } from './companyService';
+import { userService } from './userService';
 
 const ticketsCollection = collection(db, 'tickets');
 const apiConfigsCollection = collection(db, 'apiConfigs');
@@ -397,30 +398,61 @@ const extractOrderNumbers = (text: string): string[] => {
   const orderNumbers: string[] = [];
   
   // Padrões para códigos de pedido:
-  // - R seguido de números (ex: R123456, R595531189-dup)
-  // - LP- seguido de números (ex: LP-12345)
-  // - Pedido seguido de código (ex: pedido R123)
+  // - R seguido de números (ex: R123456, R595531189-dup, #R123456)
+  // - LP- seguido de números (ex: LP-12345, #LP-12345)
+  // - Pedido seguido de código (ex: pedido R123, pedido #R123)
+  // - Números puros quando o contexto indica (ex: quando usuário responde sobre código de pedido)
+  // - "#" é opcional e será removido antes de retornar
   // - Padrões similares
   
   const patterns = [
-    /\bR\d+[-\w]*/gi, // R123456, R595531189-dup
-    /\bLP[-_]?\d+/gi, // LP-12345, LP12345
-    /pedido\s+([R\d]+[-\w]*)/gi, // pedido R123456
-    /order\s+([R\d]+[-\w]*)/gi, // order R123456
+    /#?\bR\d+[-\w]*/gi, // R123456, R595531189-dup, #R123456, #R595531189-dup
+    /#?\bLP[-_]?\d+/gi, // LP-12345, LP12345, #LP-12345
+    /#?\b[A-Za-z]+\d+[-\w]*/gi, // Códigos genéricos: ABC123, XYZ456, qualquer letra seguida de números
+    /pedido\s+#?([A-Za-z\d]+[-\w]*)/gi, // pedido R123456, pedido ABC123, pedido #R123456
+    /order\s+#?([A-Za-z\d]+[-\w]*)/gi, // order R123456, order ABC123, order #R123456
   ];
   
   patterns.forEach(pattern => {
     const matches = text.match(pattern);
     if (matches) {
       matches.forEach(match => {
-        // Limpar espaços e caracteres extras
-        const cleaned = match.replace(/^(pedido|order)\s+/i, '').trim();
-        if (cleaned && !orderNumbers.includes(cleaned)) {
+        // Limpar espaços, caracteres extras e "#" opcional
+        let cleaned = match.replace(/^(pedido|order)\s+/i, '').trim();
+        cleaned = cleaned.replace(/^#+/, '').trim(); // Remover "#" do início
+        
+        // Se o padrão capturou um grupo (ex: pedido ABC123), usar apenas o grupo capturado
+        // Verificar se há grupos de captura no padrão
+        const groupMatch = match.match(/^(pedido|order)\s+#?([A-Za-z\d]+[-\w]*)/i);
+        if (groupMatch && groupMatch[2]) {
+          cleaned = groupMatch[2].trim();
+        }
+        
+        // Validar que é um código válido (pelo menos uma letra seguida de números)
+        // OU número puro com pelo menos 6 dígitos (provavelmente código de pedido)
+        const isValidCodeWithLetters = cleaned && /^[A-Za-z]+\d+/.test(cleaned);
+        const isValidPureNumber = cleaned && /^\d{6,}$/.test(cleaned); // Números com 6+ dígitos
+        
+        if ((isValidCodeWithLetters || isValidPureNumber) && !orderNumbers.includes(cleaned)) {
           orderNumbers.push(cleaned);
         }
       });
     }
   });
+  
+  // Se não encontrou códigos com padrões, tentar extrair números puros longos (6+ dígitos)
+  // Isso ajuda quando o usuário digita apenas números como resposta
+  if (orderNumbers.length === 0) {
+    const pureNumberPattern = /\b\d{6,}\b/g; // Números com 6 ou mais dígitos
+    const numberMatches = text.match(pureNumberPattern);
+    if (numberMatches) {
+      numberMatches.forEach(match => {
+        if (!orderNumbers.includes(match)) {
+          orderNumbers.push(match);
+        }
+      });
+    }
+  }
   
   return orderNumbers;
 };
@@ -582,11 +614,17 @@ export const supportService = {
         }
       }
       
-      const newTicket = {
-          ...ticketData,
-          orderId: orderId || ticketData.orderId,
-          phone: ticketData.phone?.replace(/\D/g, '') || '',
-          companyId: companyId || ticketData.companyId, // Usar companyId identificado ou o fornecido
+      // Remover campos undefined para evitar erro no Firebase
+      const cleanTicketData: Record<string, any> = {
+          subject: ticketData.subject,
+          description: ticketData.description || 'Ticket criado pelo cliente.',
+          priority: ticketData.priority,
+          status: ticketData.status,
+          name: ticketData.name,
+          email: ticketData.email,
+          phone: ticketData.phone?.replace(/\D/g, '') || undefined,
+          orderNumber: ticketData.orderNumber || undefined,
+          companyId: companyId || ticketData.companyId || undefined,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           history: [{
@@ -596,33 +634,65 @@ export const supportService = {
               content: ticketData.description || 'Ticket criado pelo cliente.'
           }]
       };
-      const docRef = await addDoc(ticketsCollection, newTicket);
+      
+      // Adicionar orderId apenas se existir
+      const finalOrderId = orderId || ticketData.orderId;
+      if (finalOrderId) {
+          cleanTicketData.orderId = finalOrderId;
+      }
+      
+      // Remover campos undefined antes de salvar
+      Object.keys(cleanTicketData).forEach(key => {
+          if (cleanTicketData[key] === undefined) {
+              delete cleanTicketData[key];
+          }
+      });
+      
+      const docRef = await addDoc(ticketsCollection, cleanTicketData);
       const ticketId = docRef.id;
       
-      // Enviar email de confirmação ao cliente
-      try {
-        const orderInfo = ticketData.orderNumber ? ` relacionado ao pedido ${ticketData.orderNumber}` : '';
-        const emailHtmlBody = `
-          <div style="font-family: sans-serif; line-height: 1.6;">
-            <h2>Olá ${ticketData.name},</h2>
-            <p>Seu chamado de suporte foi criado com sucesso${orderInfo}!</p>
-            <div style="background-color: #f4f4f4; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
-              <p><strong>ID do Chamado:</strong> #${ticketId.substring(0, 6)}</p>
-              <p><strong>Assunto:</strong> ${ticketData.subject}</p>
-              <p><strong>Status:</strong> Aberto</p>
-            </div>
-            <p>Nossa equipe entrará em contato em breve para resolver sua questão.</p>
-            <p>Atenciosamente,<br>Equipe Lojinha Prio by Yoobe</p>
-          </div>`;
-        
-        await supportService.sendTicketReplyEmail({
-          to: ticketData.email,
-          subject: `Chamado de Suporte Criado - #${ticketId.substring(0, 6)}`,
-          htmlBody: emailHtmlBody
+      // Registrar criação de ticket no userService
+      if (ticketData.email) {
+        userService.recordTicketCreation(ticketData.email).catch(error => {
+          console.error('[createTicket] Erro ao registrar criação de ticket:', error);
+          // Não bloquear criação do ticket se houver erro
         });
-      } catch (emailError) {
-        console.error('[createTicket] Erro ao enviar email de confirmação:', emailError);
-        // Não falhar a criação do ticket se o email falhar
+      }
+      
+      // Enviar email de confirmação ao cliente
+      // IMPORTANTE: Email é enviado para TODOS os 9 assuntos de chamado
+      if (ticketData.email && ticketData.email.trim()) {
+        try {
+          console.log('[createTicket] Enviando email para:', ticketData.email, 'Assunto:', ticketData.subject);
+          
+          const orderInfo = ticketData.orderNumber ? ` relacionado ao pedido ${ticketData.orderNumber}` : '';
+          const emailHtmlBody = `
+            <div style="font-family: sans-serif; line-height: 1.6;">
+              <h2>Olá ${ticketData.name},</h2>
+              <p>Seu chamado de suporte foi criado com sucesso${orderInfo}!</p>
+              <div style="background-color: #f4f4f4; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
+                <p><strong>ID do Chamado:</strong> #${ticketId.substring(0, 6)}</p>
+                <p><strong>Assunto:</strong> ${ticketData.subject}</p>
+                <p><strong>Status:</strong> Aberto</p>
+              </div>
+              <p>Nossa equipe entrará em contato em breve para resolver sua questão.</p>
+              <p>Atenciosamente,<br>Equipe Yoobe</p>
+            </div>`;
+          
+          await supportService.sendTicketReplyEmail({
+            to: ticketData.email.trim(),
+            subject: `Chamado de Suporte Criado - #${ticketId.substring(0, 6)}`,
+            htmlBody: emailHtmlBody,
+            bcc: 'atendimento@yoobe.co'
+          });
+          
+          console.log('[createTicket] Email enviado com sucesso para:', ticketData.email, 'Assunto:', ticketData.subject);
+        } catch (emailError) {
+          console.error('[createTicket] Erro ao enviar email de confirmação:', emailError);
+          // Não falhar a criação do ticket se o email falhar
+        }
+      } else {
+        console.warn('[createTicket] Email não fornecido ou vazio. Ticket criado sem envio de email. Assunto:', ticketData.subject);
       }
       
       return ticketId;
@@ -673,13 +743,14 @@ export const supportService = {
               <p><strong>Novo Status:</strong> ${statusText}</p>
             </div>
             <p>Você pode acompanhar o progresso do seu chamado em nosso portal de suporte.</p>
-            <p>Atenciosamente,<br>Equipe Lojinha Prio by Yoobe</p>
+            <p>Atenciosamente,<br>Equipe Yoobe</p>
           </div>`;
         
         await supportService.sendTicketReplyEmail({
           to: ticketData.email,
           subject: `Atualização do Chamado #${id.substring(0, 6)} - Status: ${statusText}`,
-          htmlBody: emailHtmlBody
+          htmlBody: emailHtmlBody,
+          bcc: 'atendimento@yoobe.co'
         });
       } catch (emailError) {
         console.error('[updateTicket] Erro ao enviar email de atualização:', emailError);
@@ -827,13 +898,14 @@ export const supportService = {
               <p><strong>Novo Status:</strong> ${statusText}</p>
             </div>
             <p>Você pode acompanhar o progresso do seu chamado em nosso portal de suporte.</p>
-            <p>Atenciosamente,<br>Equipe Lojinha Prio by Yoobe</p>
+            <p>Atenciosamente,<br>Equipe Yoobe</p>
           </div>`;
         
         await supportService.sendTicketReplyEmail({
           to: ticketData.email,
           subject: `Atualização do Chamado #${id.substring(0, 6)} - Status: ${statusText}`,
-          htmlBody: emailHtmlBody
+          htmlBody: emailHtmlBody,
+          bcc: 'atendimento@yoobe.co'
         });
       } catch (emailError) {
         console.error('[updateTicketStatus] Erro ao enviar email de atualização:', emailError);
@@ -843,7 +915,7 @@ export const supportService = {
   },
 
   // Postmark Email Service
-  sendTicketReplyEmail: async (emailData: { to: string, subject: string, htmlBody: string }): Promise<{ success: boolean; error?: string }> => {
+  sendTicketReplyEmail: async (emailData: { to: string, subject: string, htmlBody: string, cc?: string, bcc?: string }): Promise<{ success: boolean; error?: string }> => {
     // URL do proxy de email Postmark deployado no Google Cloud Run
     // Configure via variável de ambiente VITE_POSTMARK_PROXY_URL no .env.local ou no Cloud Run
     const EMAIL_PROXY_URL = ((import.meta as any).env?.VITE_POSTMARK_PROXY_URL as string) || 'https://postmark-email-proxy-409489811769.southamerica-east1.run.app'; 
@@ -983,6 +1055,28 @@ export const supportService = {
                 
                 const statusText = statusMap[order.status.toLowerCase()] || order.status;
                 let orderDetails = `📦 Pedido ${order.order_number} - Status: ${statusText} - Data: ${formattedDate}`;
+                
+                // Adicionar produtos com SKUs se disponível
+                if (order.items && order.items.length > 0) {
+                    const itemsWithSkus = order.items.map(item => {
+                        const qty = item.quantity || 1;
+                        const name = item.name || item.sku || 'Produto';
+                        const sku = item.sku ? ` (SKU: ${item.sku})` : '';
+                        return `${qty}x ${name}${sku}`;
+                    }).join(', ');
+                    orderDetails += `\n🛍️ Produtos: ${itemsWithSkus}`;
+                    
+                    // Adicionar lista de SKUs
+                    const skus = order.items
+                        .filter(item => item.sku)
+                        .map(item => item.sku)
+                        .filter((sku, index, self) => self.indexOf(sku) === index);
+                    if (skus.length > 0) {
+                        orderDetails += `\n📋 SKUs: ${skus.join(', ')}`;
+                    }
+                } else if (order.items_summary && order.items_summary.length > 0) {
+                    orderDetails += `\n🛍️ Produtos: ${order.items_summary.join(', ')}`;
+                }
                 
                 // Adicionar endereço de entrega ou local de coleta
                 if (order.pickup_location) {
@@ -1195,14 +1289,37 @@ export const supportService = {
             };
             
             const statusText = statusMap[order.status.toLowerCase()] || order.status;
-            const itemsText = order.items_summary && order.items_summary.length > 0 
-              ? order.items_summary.join(', ') 
-              : 'Produtos não especificados';
+            
+            // Formatar produtos com SKUs se disponível
+            let itemsText = 'Produtos não especificados';
+            if (order.items && order.items.length > 0) {
+                // Incluir SKUs na formatação
+                itemsText = order.items.map(item => {
+                    const qty = item.quantity || 1;
+                    const name = item.name || item.sku || 'Produto';
+                    const sku = item.sku ? ` (SKU: ${item.sku})` : '';
+                    return `${qty}x ${name}${sku}`;
+                }).join(', ');
+            } else if (order.items_summary && order.items_summary.length > 0) {
+                itemsText = order.items_summary.join(', ');
+            }
             
             let details = `📦 Pedido ${order.order_number}\n`;
             details += `Status: ${statusText}\n`;
             details += `Data: ${formattedDate}\n`;
-            details += `Produtos: ${itemsText}\n`;
+            details += `🛍️ Produtos: ${itemsText}\n`;
+            
+            // Adicionar seção de SKUs se disponível
+            if (order.items && order.items.length > 0) {
+                const skus = order.items
+                    .filter(item => item.sku)
+                    .map(item => item.sku)
+                    .filter((sku, index, self) => self.indexOf(sku) === index); // Remover duplicatas
+                
+                if (skus.length > 0) {
+                    details += `📋 SKUs: ${skus.join(', ')}\n`;
+                }
+            }
             
             // Adicionar valor total se disponível
             if (order.total_amount !== undefined) {

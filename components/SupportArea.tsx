@@ -216,16 +216,23 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
       <TabsContent value="chat" className="min-h-[600px]">
         <Card className="flex flex-col h-full">
           <CardContent className="flex-1 overflow-hidden p-0 h-[600px]">
-            <Chatbot
-              user={{
-                name: user.displayName || '',
-                email: user.email || '',
-                phone: user.phoneNumber || ''
-              }}
-              companyId={companyId}
-              onTicketCreated={onReload}
-              inline={true}
-            />
+            {/* Garantir que email seja válido antes de passar para Chatbot */}
+            {user.email && user.email.trim() ? (
+              <Chatbot
+                user={{
+                  name: user.displayName || '',
+                  email: user.email.trim(),
+                  phone: user.phoneNumber || ''
+                }}
+                companyId={companyId}
+                onTicketCreated={onReload}
+                inline={true}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground">Por favor, configure seu email no perfil para usar o chat.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </TabsContent>

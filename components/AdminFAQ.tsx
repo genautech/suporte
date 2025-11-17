@@ -115,7 +115,7 @@ export const AdminFAQ: React.FC<{ companyId?: string }> = ({ companyId }) => {
       question: entry.question,
       answer: entry.answer,
       category: entry.category,
-      tags: entry.tags.join(', '),
+      tags: (entry.tags || []).join(', '),
       order: entry.order,
       active: entry.active,
       companyId: entryCompanyId === 'general' ? undefined : entryCompanyId,

@@ -159,7 +159,7 @@ export const knowledgeBaseService = {
           let score = 0;
           const titleLower = entry.title.toLowerCase();
           const contentLower = entry.content.toLowerCase();
-          const tagsLower = entry.tags.join(' ').toLowerCase();
+          const tagsLower = (entry.tags || []).join(' ').toLowerCase();
 
           if (titleLower.includes(lowerQuery)) score += 10;
           if (contentLower.includes(lowerQuery)) score += 5;

@@ -379,3 +379,8 @@ Após completar todos os passos, seu proxy estará funcionando e o erro de CORS 
 
 
 
+
+
+
+
+

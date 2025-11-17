@@ -263,3 +263,8 @@ const addressVariations = {
 - `services/supportService.ts` - Implementação da normalização
 - `components/OrderDetailModal.tsx` - Componente de modal
 
+
+
+
+
+

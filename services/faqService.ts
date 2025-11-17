@@ -210,7 +210,7 @@ export const faqService = {
           let score = 0;
           const questionLower = entry.question.toLowerCase();
           const answerLower = entry.answer.toLowerCase();
-          const tagsLower = entry.tags.join(' ').toLowerCase();
+          const tagsLower = (entry.tags || []).join(' ').toLowerCase();
 
           // Match exato na pergunta
           if (questionLower.includes(lowerQuery)) score += 10;
