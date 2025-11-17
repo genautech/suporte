@@ -1,6 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Função helper para verificar se é admin
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.admin == true ||
+        request.auth.token.email == 'admin@yoobe.co'
+      );
+    }
+    
     // Regras padrão - permitir leitura/escrita autenticada
     // Ajuste estas regras conforme necessário para sua aplicação
     
@@ -8,42 +16,43 @@ service cloud.firestore {
     match /tickets/{ticketId} {
       allow read: if request.auth != null && 
                      (resource.data.userId == request.auth.token.email || 
-                      request.auth.token.admin == true);
+                      isAdmin());
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null && 
                               (resource.data.userId == request.auth.token.email || 
-                               request.auth.token.admin == true);
+                               isAdmin());
     }
     
     // FAQ - todos podem ler, apenas admins podem escrever
     // Clientes veem apenas FAQ da sua empresa + generalista
     match /faq/{faqId} {
       allow read: if true; // Todos podem ler, filtro por companyId é feito no código
-      allow write: if request.auth != null && request.auth.token.admin == true;
+      allow write: if isAdmin();
     }
     
     // Knowledge Base - todos podem ler, apenas admins podem escrever
     // Clientes veem apenas KB da sua empresa + generalista
     match /knowledgeBase/{kbId} {
       allow read: if true; // Todos podem ler, filtro por companyId é feito no código
-      allow write: if request.auth != null && request.auth.token.admin == true;
+      allow write: if isAdmin();
     }
     
     // Companies - apenas admins podem ler/escrever
+    // Permitir acesso quando autenticado como admin@yoobe.co ou com token admin
     match /companies/{companyId} {
-      allow read, write: if request.auth != null && request.auth.token.admin == true;
+      allow read, write: if isAdmin();
     }
     
     // User Roles - apenas admins podem ler/escrever
     match /userRoles/{email} {
-      allow read, write: if request.auth != null && request.auth.token.admin == true;
+      allow read, write: if isAdmin();
     }
     
     // Conversations - usuários podem ler/escrever suas próprias conversas
     match /conversations/{conversationId} {
       allow read, write: if request.auth != null && 
                            (resource.data.userId == request.auth.token.email || 
-                            request.auth.token.admin == true);
+                            isAdmin());
       allow create: if request.auth != null;
     }
     
@@ -54,13 +63,13 @@ service cloud.firestore {
     
     // API Configs - apenas admins
     match /apiConfigs/{configId} {
-      allow read, write: if request.auth != null && request.auth.token.admin == true;
+      allow read, write: if isAdmin();
     }
     
     // Orders - usuários podem ler seus próprios pedidos
     match /orders/{orderId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.token.admin == true;
+      allow write: if isAdmin();
     }
     
     // Default: negar acesso
