@@ -6,6 +6,7 @@ import {
   getDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   query,
   where,
@@ -19,6 +20,13 @@ import { SupportUser } from '../types';
 import { companyService } from './companyService';
 
 const supportUsersCollection = collection(db, 'supportUsers');
+
+type RecordLoginOptions = {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  companyIdOverride?: string;
+};
 
 // Converter usuário do Firestore para objeto
 const supportUserFromFirestore = (docSnapshot: any): SupportUser => {
@@ -38,7 +46,7 @@ export const userService = {
   /**
    * Registra ou atualiza um login de usuário
    */
-  recordLogin: async (email: string, additionalData?: { firstName?: string; lastName?: string; phone?: string }): Promise<SupportUser> => {
+  recordLogin: async (email: string, additionalData?: RecordLoginOptions): Promise<SupportUser> => {
     try {
       const normalizedEmail = email.toLowerCase().trim();
       const userRef = doc(db, 'supportUsers', normalizedEmail);
@@ -64,31 +72,26 @@ export const userService = {
       const isNewUser = !existingData;
       
       // Detectar empresa do usuário (se ainda não foi atribuída manualmente)
-      let autoDetectedCompanyId: string | undefined;
-      let storeUrl: string | undefined;
-      if (isNewUser || !existingData?.assignedCompanyId) {
+      let autoDetectedCompanyId: string | undefined = additionalData?.companyIdOverride;
+      if (!autoDetectedCompanyId && (isNewUser || !existingData?.assignedCompanyId)) {
         try {
           autoDetectedCompanyId = await companyService.getCompanyFromEmail(normalizedEmail);
-          // Buscar storeUrl da empresa identificada
-          if (autoDetectedCompanyId) {
-            try {
-              storeUrl = await companyService.getCompanyStoreUrl(autoDetectedCompanyId) || undefined;
-            } catch (error) {
-              console.error('[userService] Erro ao buscar storeUrl da empresa:', error);
-            }
-          }
         } catch (error) {
           console.error('[userService] Erro ao detectar empresa:', error);
         }
-      } else {
-        // Se empresa já foi atribuída, buscar storeUrl dela também
-        const companyId = existingData.assignedCompanyId || existingData.autoDetectedCompanyId;
-        if (companyId) {
-          try {
-            storeUrl = await companyService.getCompanyStoreUrl(companyId) || undefined;
-          } catch (error) {
-            console.error('[userService] Erro ao buscar storeUrl da empresa atribuída:', error);
-          }
+      }
+
+      const companyIdForStoreUrl =
+        autoDetectedCompanyId ||
+        existingData?.assignedCompanyId ||
+        existingData?.autoDetectedCompanyId;
+
+      let storeUrl: string | undefined;
+      if (companyIdForStoreUrl) {
+        try {
+          storeUrl = await companyService.getCompanyStoreUrl(companyIdForStoreUrl) || undefined;
+        } catch (error) {
+          console.error('[userService] Erro ao buscar storeUrl da empresa:', error);
         }
       }
       
@@ -470,6 +473,33 @@ export const userService = {
       return null;
     }
   },
+
+  /**
+   * Excluir usuário permanentemente
+   */
+  deleteUser: async (email: string): Promise<void> => {
+    try {
+      const normalizedEmail = email.toLowerCase().trim();
+      const userRef = doc(db, 'supportUsers', normalizedEmail);
+      await deleteDoc(userRef);
+    } catch (error) {
+      console.error('[userService] Erro ao excluir usuário:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Excluir múltiplos usuários permanentemente
+   */
+  deleteUsers: async (emails: string[]): Promise<void> => {
+    try {
+      await Promise.all(emails.map(email => userService.deleteUser(email)));
+    } catch (error) {
+      console.error('[userService] Erro ao excluir usuários:', error);
+      throw error;
+    }
+  },
 };
+
 
 

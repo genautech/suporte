@@ -1,6 +1,6 @@
 // ManagerDashboard component for company managers
 import React, { useState, useEffect, useCallback } from 'react';
-import { Ticket, SupportUser } from '../types';
+import { Ticket, SupportUser, CubboOrder } from '../types';
 import { supportService } from '../services/supportService';
 import { companyService } from '../services/companyService';
 import { conversationService } from '../services/conversationService';
@@ -15,7 +15,7 @@ import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { motion } from 'framer-motion';
 
-type ManagerView = 'tickets' | 'faq' | 'knowledge' | 'interactions' | 'users';
+type ManagerView = 'tickets' | 'orders' | 'faq' | 'knowledge' | 'interactions' | 'users';
 
 interface ManagerDashboardProps {
     companyId: string;
@@ -27,6 +27,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [users, setUsers] = useState<SupportUser[]>([]);
+    const [orders, setOrders] = useState<CubboOrder[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -186,12 +187,91 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
     useEffect(() => {
         if (view === 'tickets') {
             loadTickets();
+        } else if (view === 'orders') {
+            loadOrders();
         } else if (view === 'interactions') {
             loadConversations();
         } else if (view === 'users') {
             loadUsers();
         }
-    }, [view, loadTickets, loadConversations, loadUsers]);
+    }, [view, loadTickets, loadOrders, loadConversations, loadUsers]);
+
+    const formatOrderStatus = (status?: string) => {
+        switch ((status || '').toLowerCase()) {
+            case 'pending':
+                return 'Pendente';
+            case 'processing':
+                return 'Processando';
+            case 'shipped':
+                return 'Enviado';
+            case 'delivered':
+                return 'Entregue';
+            case 'cancelled':
+                return 'Cancelado';
+            case 'refunded':
+                return 'Reembolsado';
+            default:
+                return status || 'Desconhecido';
+        }
+    };
+
+    const getStatusBadgeVariant = (status?: string) => {
+        switch ((status || '').toLowerCase()) {
+            case 'delivered':
+                return 'success';
+            case 'shipped':
+                return 'secondary';
+            case 'pending':
+            case 'processing':
+                return 'warning';
+            case 'cancelled':
+            case 'refunded':
+                return 'destructive';
+            default:
+                return 'secondary';
+        }
+    };
+
+    const formatCurrency = (value?: number, currency: string = 'BRL') => {
+        if (value === undefined || value === null) return '-';
+        try {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: currency || 'BRL',
+                minimumFractionDigits: 2,
+            }).format(value);
+        } catch {
+            return `R$ ${value.toFixed(2)}`;
+        }
+    };
+
+    const formatDate = (dateString?: string) => {
+        if (!dateString) return '-';
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch {
+            return dateString;
+        }
+    };
+
+    const loadOrders = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const companyOrders = await supportService.getCompanyOrders(companyId);
+            setOrders(companyOrders);
+        } catch (error) {
+            console.error('[ManagerDashboard] Erro ao carregar pedidos:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [companyId]);
 
     const renderView = () => {
         switch (view) {
@@ -220,7 +300,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                                     <CardContent>
                                         <div className="text-3xl font-bold">{companyStats.totalOrders}</div>
                                         <p className="text-xs text-muted-foreground mt-1">
-                                            Total de pedidos na Cubbo
+                                            Total de pedidos relacionados
                                         </p>
                                     </CardContent>
                                 </Card>
@@ -318,6 +398,131 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                                     </table>
                                 </Card>
                             </div>
+                        )}
+                    </div>
+                );
+            case 'orders':
+                return (
+                    <div>
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                            <div>
+                                <h1 className="text-2xl font-bold text-gray-900 mb-1">Pedidos</h1>
+                                <p className="text-sm text-gray-600">
+                                    Pedidos relacionados à empresa {companyName}
+                                </p>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={loadOrders}
+                                    disabled={isLoading}
+                                >
+                                    Atualizar
+                                </Button>
+                            </div>
+                        </div>
+
+                        {isLoading ? (
+                            <Card className="p-12 text-center">
+                                <CardContent>
+                                    <span className="loading loading-spinner loading-lg text-primary"></span>
+                                    <p className="mt-4 text-muted-foreground font-medium">
+                                        Carregando pedidos...
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        ) : orders.length === 0 ? (
+                            <Card className="p-12 text-center">
+                                <CardContent>
+                                    <p className="text-muted-foreground mb-2">
+                                        Nenhum pedido encontrado para esta empresa.
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Verifique se os usuários associados estão corretos ou tente novamente
+                                        após novas vendas.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <Card className="overflow-x-auto">
+                                <table className="table-standard">
+                                    <thead>
+                                        <tr>
+                                            <th>Pedido</th>
+                                            <th>Status</th>
+                                            <th>Cliente</th>
+                                            <th>Email</th>
+                                            <th>Data</th>
+                                            <th>Valor</th>
+                                            <th>Rastreio</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {orders.map(order => (
+                                            <tr key={order.id || order.order_number}>
+                                                <td className="font-semibold">
+                                                    {order.order_number || order.id || 'Sem número'}
+                                                    {order.items_summary && order.items_summary.length > 0 && (
+                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                            {order.items_summary.join(' • ')}
+                                                        </p>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <Badge variant={getStatusBadgeVariant(order.status)}>
+                                                        {formatOrderStatus(order.status)}
+                                                    </Badge>
+                                                </td>
+                                                <td>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium">
+                                                            {order.customer_name || 'Cliente'}
+                                                        </span>
+                                                        {order.customer_phone && (
+                                                            <span className="text-xs text-gray-500">
+                                                                {order.customer_phone}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="text-sm text-gray-600">
+                                                    {order.customer_email || order.shipping_email || '-'}
+                                                </td>
+                                                <td className="text-sm text-gray-600">
+                                                    {formatDate(order.created_at)}
+                                                </td>
+                                                <td className="text-sm">
+                                                    {formatCurrency(order.total_amount, order.currency)}
+                                                </td>
+                                                <td className="text-sm text-gray-600">
+                                                    {order.shipping_information?.tracking_number ? (
+                                                        <div className="flex flex-col gap-1">
+                                                            <span>{order.shipping_information.tracking_number}</span>
+                                                            {order.shipping_information.tracking_url && (
+                                                                <a
+                                                                    href={order.shipping_information.tracking_url}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="text-primary underline text-xs"
+                                                                >
+                                                                    Acompanhar
+                                                                </a>
+                                                            )}
+                                                            {order.shipping_information.courier && (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {order.shipping_information.courier}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        '-'
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </Card>
                         )}
                     </div>
                 );
@@ -497,6 +702,19 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                     >
                         <span>🎫</span>
                         Chamados
+                    </motion.a>
+                    <motion.a 
+                        onClick={() => setView('orders')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'orders' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>📦</span>
+                        Pedidos
                     </motion.a>
                     <motion.a 
                         onClick={() => setView('faq')} 

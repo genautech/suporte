@@ -11,6 +11,7 @@ import { ProfileModal } from './ProfileModal';
 import { Chatbot } from './Chatbot';
 import { LogoutIcon, UserIcon } from './Icons';
 import { auth } from '../firebase';
+import { storeContext } from '../lib/storeContext';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import {
@@ -40,6 +41,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
   const [companyId, setCompanyId] = useState<string>('general');
   const [companyName, setCompanyName] = useState<string>('Suporte Yoobe');
   const [storeUrl, setStoreUrl] = useState<string | null>(null);
+  const [detectedCompanyId, setDetectedCompanyId] = useState<string | null>(null);
+  const [companyContextResolved, setCompanyContextResolved] = useState(false);
 
   const loadData = useCallback(async () => {
     // Usar email real se fornecido (modo admin visualizando cliente), senão usar email do user
@@ -63,58 +66,121 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
   }, [user, realClientEmail]);
 
   useEffect(() => {
-    // Atualizar profileUser quando user mudar
     setProfileUser(user);
-    
-    // Abrir modal apenas se não tiver email (não se faltar apenas nome/sobrenome)
     if (!user.email) {
       setIsProfileModalOpen(true);
     }
     loadData();
-    
-    // Registrar login do usuário (nome e sobrenome são opcionais)
-    if (user.email) {
-      const nameParts = user.displayName?.split(' ') || [];
-      const firstName = nameParts[0]?.trim() || undefined;
-      const lastName = nameParts.slice(1).join(' ').trim() || undefined;
-      
-      userService.recordLogin(user.email, {
-        firstName: firstName,
-        lastName: lastName,
-        phone: user.phoneNumber || undefined,
-      }).catch(error => {
-        console.error('[UserDashboard] Erro ao registrar login:', error);
-        // Não bloquear o fluxo se houver erro
-      });
-    }
-    
-    // Detectar empresa do usuário
-    // Se admin selecionou um cliente específico, usar esse; senão, detectar pelo email
-    if (adminSelectedCompanyId) {
-      setCompanyId(adminSelectedCompanyId);
-      if (adminSelectedCompanyId !== 'general') {
-        companyService.getCompanyName(adminSelectedCompanyId).then((name) => {
-          setCompanyName(name);
-        });
-      }
-    } else if (user.email) {
-      companyService.getCompanyFromEmail(user.email).then((id) => {
-        setCompanyId(id);
-        if (id && id !== 'general') {
-          companyService.getCompanyName(id).then((name) => {
+  }, [user, loadData]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const resolveCompany = async () => {
+      storeContext.detectAndStoreContext();
+      setCompanyContextResolved(false);
+
+      if (adminSelectedCompanyId) {
+        setCompanyId(adminSelectedCompanyId);
+        setDetectedCompanyId(adminSelectedCompanyId);
+        if (adminSelectedCompanyId !== 'general') {
+          const name = await companyService.getCompanyName(adminSelectedCompanyId);
+          if (isMounted) {
             setCompanyName(name);
-          });
+          }
+        } else if (isMounted) {
+          setCompanyName('Suporte Yoobe');
         }
-      });
-      // Buscar storeUrl do usuário
-      userService.getUserStoreUrl(user.email).then((url) => {
-        setStoreUrl(url);
-      }).catch((error) => {
+        if (isMounted) setCompanyContextResolved(true);
+        return;
+      }
+
+      const storedCompanyId = storeContext.getStoredCompanyId();
+      const storedStoreUrl = storeContext.getStoredStoreUrl();
+      let companyIdFromStore = storedCompanyId || null;
+
+      if (!companyIdFromStore && storedStoreUrl) {
+        companyIdFromStore = await companyService.getCompanyByStoreUrl(storedStoreUrl);
+        if (companyIdFromStore) {
+          storeContext.setStoredCompanyId(companyIdFromStore);
+        }
+      }
+
+      if (companyIdFromStore) {
+        setCompanyId(companyIdFromStore);
+        setDetectedCompanyId(companyIdFromStore);
+        if (companyIdFromStore !== 'general') {
+          const name = await companyService.getCompanyName(companyIdFromStore);
+          if (isMounted) {
+            setCompanyName(name);
+          }
+        } else if (isMounted) {
+          setCompanyName('Suporte Yoobe');
+        }
+        if (isMounted) setCompanyContextResolved(true);
+        return;
+      }
+
+      if (user.email) {
+        const emailCompanyId = await companyService.getCompanyFromEmail(user.email);
+        setCompanyId(emailCompanyId);
+        setDetectedCompanyId(emailCompanyId !== 'general' ? emailCompanyId : null);
+        if (emailCompanyId && emailCompanyId !== 'general') {
+          const name = await companyService.getCompanyName(emailCompanyId);
+          if (isMounted) {
+            setCompanyName(name);
+          }
+        } else if (isMounted) {
+          setCompanyName('Suporte Yoobe');
+        }
+        if (isMounted) setCompanyContextResolved(true);
+        return;
+      }
+
+      setCompanyId('general');
+      setDetectedCompanyId(null);
+      setCompanyName('Suporte Yoobe');
+      if (isMounted) setCompanyContextResolved(true);
+    };
+
+    resolveCompany();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user.email, adminSelectedCompanyId]);
+
+  useEffect(() => {
+    if (!user.email || !companyContextResolved) {
+      return;
+    }
+
+    const nameParts = user.displayName?.split(' ') || [];
+    const firstName = nameParts[0]?.trim() || undefined;
+    const lastName = nameParts.slice(1).join(' ').trim() || undefined;
+
+    userService.recordLogin(user.email, {
+      firstName,
+      lastName,
+      phone: user.phoneNumber || undefined,
+      companyIdOverride: detectedCompanyId || undefined,
+    }).catch(error => {
+      console.error('[UserDashboard] Erro ao registrar login:', error);
+    });
+  }, [user, detectedCompanyId, companyContextResolved]);
+
+  useEffect(() => {
+    if (!user.email || !companyContextResolved) {
+      setStoreUrl(null);
+      return;
+    }
+
+    userService.getUserStoreUrl(user.email)
+      .then((url) => setStoreUrl(url))
+      .catch((error) => {
         console.error('[UserDashboard] Erro ao buscar storeUrl:', error);
         setStoreUrl(null);
       });
-    }
-  }, [user, loadData, adminSelectedCompanyId]);
+  }, [user.email, companyContextResolved]);
 
   const handleViewTicket = (ticket: Ticket) => {
     setSelectedTicket(ticket);

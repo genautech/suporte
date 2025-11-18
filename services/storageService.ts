@@ -164,6 +164,46 @@ export const storageService = {
     return /\.(mp4|webm|ogg)(\?.*)?$/i.test(url) || 
            /youtube\.com|youtu\.be|vimeo\.com/i.test(url);
   },
+
+  /**
+   * Upload de imagem do chat
+   */
+  uploadChatImage: async (file: File, userId: string): Promise<string> => {
+    try {
+      // Validar tipo
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        throw new Error(`Tipo de arquivo não permitido. Use: ${ALLOWED_IMAGE_TYPES.join(', ')}`);
+      }
+
+      // Validar tamanho
+      if (file.size > MAX_IMAGE_SIZE) {
+        throw new Error(`Imagem muito grande. Tamanho máximo: ${MAX_IMAGE_SIZE / 1024 / 1024}MB`);
+      }
+
+      // Gerar nome único
+      const timestamp = Date.now();
+      const filename = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const path = `chat/images/${userId}/${filename}`;
+
+      // Upload
+      const storageRef = ref(storage, path);
+      const uploadResult: UploadResult = await uploadBytes(storageRef, file);
+
+      // Obter URL pública
+      const downloadURL = await getDownloadURL(uploadResult.ref);
+
+      return downloadURL;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[storageService] Error uploading chat image:', {
+        filename: file.name,
+        userId,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
+  },
 };
 
 

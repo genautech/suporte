@@ -1898,28 +1898,96 @@ export const supportService = {
         (t.status === 'resolvido' || t.status === 'fechado')
       );
       
+      // Buscar informações da empresa (email do gestor, palavras-chave)
+      const { companyService } = await import('./companyService');
+      const company = await companyService.getCompany(companyId);
+      
       // Buscar usuários da empresa para buscar pedidos
       const { userService } = await import('./userService');
       const companyUsers = await userService.getUsersByCompany(companyId);
       const companyUserEmails = new Set(companyUsers.map(u => u.email.toLowerCase()));
       
+      // Adicionar email do gestor se disponível
+      if (company?.managerEmail) {
+        companyUserEmails.add(company.managerEmail.toLowerCase());
+      }
+      
       // Buscar pedidos da empresa via Cubbo API
       let totalOrders = 0;
       let shippedOrders = 0;
+      const allOrderEmails = new Set<string>();
       
       try {
-        // Buscar pedidos para cada email da empresa
+        // Buscar pedidos para cada email relacionado à empresa
         for (const email of companyUserEmails) {
           try {
             const orders = await supportService.findOrdersByCustomer({ email });
-            totalOrders += orders.length;
-            shippedOrders += orders.filter(o => 
-              o.status?.toLowerCase() === 'shipped' || 
-              o.status?.toLowerCase() === 'delivered'
-            ).length;
+            orders.forEach(order => {
+              // Adicionar email do pedido para evitar duplicatas
+              const orderEmail = order.customer_email || order.shipping_email;
+              if (orderEmail && !allOrderEmails.has(`${order.id}-${orderEmail}`)) {
+                allOrderEmails.add(`${order.id}-${orderEmail}`);
+                totalOrders++;
+                if (order.status?.toLowerCase() === 'shipped' || 
+                    order.status?.toLowerCase() === 'delivered') {
+                  shippedOrders++;
+                }
+              }
+            });
           } catch (error) {
             console.error(`[getCompanyStats] Erro ao buscar pedidos para ${email}:`, error);
             // Continuar para próximo email
+          }
+        }
+        
+        // Buscar pedidos relacionados às palavras-chave da empresa
+        // Buscar pedidos de clientes que têm pedidos fechados (delivered) da mesma organização
+        if (company?.keywords && company.keywords.length > 0) {
+          // Primeiro, coletar todos os emails de clientes com pedidos fechados
+          const closedOrderEmails = new Set<string>();
+          for (const email of companyUserEmails) {
+            try {
+              const orders = await supportService.findOrdersByCustomer({ email });
+              orders.forEach(order => {
+                if (order.status?.toLowerCase() === 'delivered') {
+                  const orderEmail = order.customer_email || order.shipping_email;
+                  if (orderEmail) {
+                    closedOrderEmails.add(orderEmail.toLowerCase());
+                  }
+                }
+              });
+            } catch (error) {
+              console.error(`[getCompanyStats] Erro ao buscar pedidos fechados para ${email}:`, error);
+            }
+          }
+          
+          // Buscar pedidos desses clientes que podem estar relacionados às palavras-chave
+          // Nota: A API Cubbo busca por email, então vamos buscar pedidos desses clientes
+          for (const email of closedOrderEmails) {
+            try {
+              const orders = await supportService.findOrdersByCustomer({ email });
+              orders.forEach(order => {
+                // Verificar se o pedido contém alguma palavra-chave da empresa
+                const orderData = JSON.stringify(order).toLowerCase();
+                const matchesKeyword = company.keywords.some(keyword => 
+                  orderData.includes(keyword.toLowerCase())
+                );
+                
+                if (matchesKeyword) {
+                  const orderKey = `${order.id}-${email}`;
+                  if (!allOrderEmails.has(orderKey)) {
+                    allOrderEmails.add(orderKey);
+                    totalOrders++;
+                    if (order.status?.toLowerCase() === 'shipped' || 
+                        order.status?.toLowerCase() === 'delivered') {
+                      shippedOrders++;
+                    }
+                  }
+                }
+              });
+            } catch (error) {
+              console.error(`[getCompanyStats] Erro ao buscar pedidos relacionados para ${email}:`, error);
+            }
           }
         }
       } catch (error) {
@@ -1939,6 +2007,91 @@ export const supportService = {
         totalOrders: 0,
         shippedOrders: 0,
       };
+    }
+  },
+
+  // Listar pedidos relacionados à empresa para o gestor
+  getCompanyOrders: async (companyId: string): Promise<CubboOrder[]> => {
+    try {
+      const { companyService } = await import('./companyService');
+      const company = await companyService.getCompany(companyId);
+      const { userService } = await import('./userService');
+      const companyUsers = await userService.getUsersByCompany(companyId);
+
+      const companyUserEmails = new Set(
+        companyUsers
+          .map(u => u.email?.toLowerCase())
+          .filter((email): email is string => Boolean(email))
+      );
+
+      if (company?.managerEmail) {
+        companyUserEmails.add(company.managerEmail.toLowerCase());
+      }
+
+      const ordersMap = new Map<string, CubboOrder>();
+
+      const addOrderToMap = (order: CubboOrder, fallbackEmail?: string) => {
+        const referenceEmail =
+          (order.customer_email || order.shipping_email || fallbackEmail || '').toLowerCase();
+        const key = order.id || `${order.order_number || 'unknown'}-${referenceEmail}`;
+        if (!ordersMap.has(key)) {
+          ordersMap.set(key, order);
+        }
+      };
+
+      const fetchAndStoreOrders = async (email: string): Promise<CubboOrder[]> => {
+        try {
+          const orders = await supportService.findOrdersByCustomer({ email });
+          orders.forEach(order => addOrderToMap(order, email));
+          return orders;
+        } catch (error) {
+          console.error(`[getCompanyOrders] Erro ao buscar pedidos para ${email}:`, error);
+          return [];
+        }
+      };
+
+      const closedOrderEmails = new Set<string>();
+
+      // Buscar pedidos dos usuários da empresa
+      for (const email of companyUserEmails) {
+        const orders = await fetchAndStoreOrders(email);
+        orders.forEach(order => {
+          const referenceEmail =
+            (order.customer_email || order.shipping_email || email).toLowerCase();
+          if (order.status?.toLowerCase() === 'delivered') {
+            closedOrderEmails.add(referenceEmail);
+          }
+        });
+      }
+
+      // Buscar pedidos relacionados às palavras-chave da empresa
+      if (company?.keywords && company.keywords.length > 0) {
+        for (const email of closedOrderEmails) {
+          try {
+            const keywordOrders = await supportService.findOrdersByCustomer({ email });
+            keywordOrders.forEach(order => {
+              const orderData = JSON.stringify(order).toLowerCase();
+              const matchesKeyword = company.keywords!.some(keyword =>
+                orderData.includes(keyword.toLowerCase())
+              );
+              if (matchesKeyword) {
+                addOrderToMap(order, email);
+              }
+            });
+          } catch (error) {
+            console.error(`[getCompanyOrders] Erro ao buscar pedidos relacionados para ${email}:`, error);
+          }
+        }
+      }
+
+      return Array.from(ordersMap.values()).sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
+    } catch (error) {
+      console.error('[getCompanyOrders] Erro ao coletar pedidos da empresa:', error);
+      return [];
     }
   },
 

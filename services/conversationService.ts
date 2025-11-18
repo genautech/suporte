@@ -6,6 +6,7 @@ import {
   getDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   query,
   where,
@@ -481,6 +482,27 @@ export const conversationService = {
       });
     } catch (error) {
       console.error('[conversationService] Erro ao vincular ticket:', error);
+      throw error;
+    }
+  },
+
+  // Excluir conversa permanentemente
+  deleteConversation: async (conversationId: string): Promise<void> => {
+    try {
+      const conversationRef = doc(conversationsCollection, conversationId);
+      await deleteDoc(conversationRef);
+    } catch (error) {
+      console.error('[conversationService] Erro ao excluir conversa:', error);
+      throw error;
+    }
+  },
+
+  // Excluir múltiplas conversas permanentemente
+  deleteConversations: async (conversationIds: string[]): Promise<void> => {
+    try {
+      await Promise.all(conversationIds.map(id => conversationService.deleteConversation(id)));
+    } catch (error) {
+      console.error('[conversationService] Erro ao excluir conversas:', error);
       throw error;
     }
   },

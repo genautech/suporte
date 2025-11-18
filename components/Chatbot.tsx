@@ -7,7 +7,8 @@ import { supportService } from '../services/supportService';
 import { conversationService } from '../services/conversationService';
 import { companyService } from '../services/companyService';
 import { userService } from '../services/userService';
-import { MessageIcon, CloseIcon, SendIcon, UserIcon, BotIcon } from './Icons';
+import { storageService } from '../services/storageService';
+import { MessageIcon, CloseIcon, SendIcon, UserIcon, BotIcon, CopyIcon } from './Icons';
 import { ExchangeForm } from './ExchangeForm';
 import { SupportTicketFormAdvanced } from './SupportTicketFormAdvanced';
 import { OrderList } from './OrderList';
@@ -47,10 +48,13 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
     const [showOrderSelection, setShowOrderSelection] = useState(false);
     const [botMessagesWithoutReply, setBotMessagesWithoutReply] = useState(0);
     const [isSearching, setIsSearching] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+    const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
     const messagesEndRef = useRef<null | HTMLDivElement>(null);
     const messageIdCounter = useRef<number>(0);
     const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
     const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -375,6 +379,65 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
             component: component,
         };
         setMessages(prev => [...prev, newComponentMessage]);
+    };
+
+    // Função para copiar mensagem
+    const handleCopyMessage = async (messageText: string, messageId: string) => {
+        try {
+            await navigator.clipboard.writeText(messageText);
+            setCopiedMessageId(messageId);
+            setTimeout(() => setCopiedMessageId(null), 2000);
+        } catch (error) {
+            // Fallback para navegadores mais antigos
+            const textArea = document.createElement('textarea');
+            textArea.value = messageText;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                setCopiedMessageId(messageId);
+                setTimeout(() => setCopiedMessageId(null), 2000);
+            } catch (err) {
+                console.error('Erro ao copiar:', err);
+            }
+            document.body.removeChild(textArea);
+        }
+    };
+
+    // Função para lidar com upload de imagem
+    const handleImageUpload = async (file: File) => {
+        try {
+            const userId = user.email || 'anonymous';
+            const imageUrl = await storageService.uploadChatImage(file, userId);
+            
+            // Adicionar imagem como mensagem ou inserir URL no input
+            const imageMessage = `![${file.name}](${imageUrl})`;
+            setInput(prev => prev ? `${prev} ${imageMessage}` : imageMessage);
+            
+            // Opcionalmente, enviar automaticamente ou apenas inserir no input
+            // Por enquanto, apenas inserir no input para o usuário revisar
+        } catch (error) {
+            console.error('Erro ao fazer upload da imagem:', error);
+            addMessage('Erro ao fazer upload da imagem. Por favor, tente novamente.', MessageSender.BOT);
+        }
+    };
+
+    // Função para detectar e processar URL arrastada
+    const handleDroppedText = (text: string) => {
+        // Verificar se é uma URL
+        const urlPattern = /(https?:\/\/[^\s]+)/g;
+        const urls = text.match(urlPattern);
+        
+        if (urls && urls.length > 0) {
+            // Se for URL, inserir como link markdown
+            const urlText = urls[0];
+            setInput(prev => prev ? `${prev} ${urlText}` : urlText);
+        } else {
+            // Se não for URL, apenas inserir o texto
+            setInput(prev => prev ? `${prev} ${text}` : text);
+        }
     };
     
     const handleFunctionCall = async (response: GenerateContentResponse) => {
@@ -1097,7 +1160,62 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                             </button>
                         )}
                     </header>
-                    <div className={`flex-1 p-4 overflow-y-auto bg-gradient-to-b from-background to-muted/20 ${inline ? 'min-h-[500px]' : ''}`}>
+                    <div 
+                        className={`flex-1 p-4 overflow-y-auto bg-gradient-to-b from-background to-muted/20 ${inline ? 'min-h-[500px]' : ''} ${isDragging ? 'bg-primary/5 border-2 border-dashed border-primary rounded-lg' : ''} transition-all duration-200 relative`}
+                        onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!isDragging) setIsDragging(true);
+                        }}
+                        onDragLeave={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            // Só desativar se realmente saiu da área (não apenas de um filho)
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            const x = e.clientX;
+                            const y = e.clientY;
+                            if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                                setIsDragging(false);
+                            }
+                        }}
+                        onDrop={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsDragging(false);
+
+                            const items = Array.from(e.dataTransfer.items);
+                            
+                            // Processar arquivos (imagens)
+                            const files = Array.from(e.dataTransfer.files);
+                            const imageFiles = files.filter(file => file.type.startsWith('image/'));
+                            
+                            if (imageFiles.length > 0) {
+                                for (const file of imageFiles) {
+                                    await handleImageUpload(file);
+                                }
+                                return;
+                            }
+
+                            // Processar texto/URLs
+                            for (const item of items) {
+                                if (item.kind === 'string') {
+                                    const text = await new Promise<string>((resolve) => {
+                                        item.getAsString(resolve);
+                                    });
+                                    handleDroppedText(text);
+                                }
+                            }
+                        }}
+                    >
+                        {/* Indicador visual de drag & drop */}
+                        {isDragging && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary rounded-lg z-10 pointer-events-none">
+                                <div className="text-center">
+                                    <p className="text-primary font-medium text-lg mb-2">Solte aqui para enviar</p>
+                                    <p className="text-muted-foreground text-sm">Imagens ou URLs</p>
+                                </div>
+                            </div>
+                        )}
                         <div className="space-y-4">
                             {messages.map((msg, index) => (
                                 msg.component ? (
@@ -1149,7 +1267,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                                                         return (
                                                             <Card 
                                                                 key={`text-${msg.id}-${partIndex}`}
-                                                                className={`p-3 ${
+                                                                className={`p-3 relative group ${
                                                                     msg.sender === MessageSender.USER 
                                                                         ? 'bg-primary text-primary-foreground border-primary/20' 
                                                                         : msg.sender === MessageSender.SYSTEM
@@ -1162,6 +1280,22 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                                                                 }`}>
                                                                     {part.content}
                                                                 </p>
+                                                                {/* Botão de copiar - aparece no hover */}
+                                                                <button
+                                                                    onClick={() => handleCopyMessage(part.content, msg.id)}
+                                                                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all duration-200 p-1.5 rounded hover:bg-black/10 hover:scale-110 z-10"
+                                                                    title="Copiar mensagem"
+                                                                    aria-label="Copiar mensagem"
+                                                                >
+                                                                    {copiedMessageId === msg.id ? (
+                                                                        <span className="text-xs text-green-600 font-bold flex items-center gap-1">
+                                                                            <span>✓</span>
+                                                                            <span>Copiado!</span>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <CopyIcon className={`w-4 h-4 ${msg.sender === MessageSender.USER ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
+                                                                    )}
+                                                                </button>
                                                             </Card>
                                                         );
                                                     }
@@ -1226,10 +1360,60 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                     <footer className={`p-4 border-t border-border bg-background ${inline ? 'rounded-b-lg' : ''}`}>
                         <form onSubmit={handleSend} className="flex items-center gap-2">
                             <Input
+                                ref={inputRef}
                                 type="text"
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
-                                placeholder="Digite sua mensagem..."
+                                onPaste={async (e) => {
+                                    const items = Array.from(e.clipboardData.items);
+                                    
+                                    // Verificar se há imagens coladas
+                                    const imageItems = items.filter(item => item.type.startsWith('image/'));
+                                    if (imageItems.length > 0) {
+                                        e.preventDefault();
+                                        for (const item of imageItems) {
+                                            const file = item.getAsFile();
+                                            if (file) {
+                                                await handleImageUpload(file);
+                                            }
+                                        }
+                                        return;
+                                    }
+
+                                    // Se não for imagem, permitir paste normal (comportamento padrão)
+                                }}
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                }}
+                                onDrop={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+
+                                    const items = Array.from(e.dataTransfer.items);
+                                    
+                                    // Processar arquivos (imagens)
+                                    const files = Array.from(e.dataTransfer.files);
+                                    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+                                    
+                                    if (imageFiles.length > 0) {
+                                        for (const file of imageFiles) {
+                                            await handleImageUpload(file);
+                                        }
+                                        return;
+                                    }
+
+                                    // Processar texto/URLs
+                                    for (const item of items) {
+                                        if (item.kind === 'string') {
+                                            const text = await new Promise<string>((resolve) => {
+                                                item.getAsString(resolve);
+                                            });
+                                            handleDroppedText(text);
+                                        }
+                                    }
+                                }}
+                                placeholder="Digite sua mensagem... (ou arraste imagens/URLs aqui)"
                                 className="flex-1"
                                 disabled={isLoading}
                             />

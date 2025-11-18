@@ -45,6 +45,8 @@ export const AdminConversations: React.FC = () => {
   const [adminMessage, setAdminMessage] = useState('');
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
+  const [selectedUserEmails, setSelectedUserEmails] = useState<Set<string>>(new Set());
   
   // Estatísticas
   const [userStats, setUserStats] = useState({
@@ -218,6 +220,90 @@ export const AdminConversations: React.FC = () => {
       } catch (error) {
         console.error('Erro ao arquivar conversa:', error);
         alert('Erro ao arquivar conversa.');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  // Funções de seleção múltipla para conversas
+  const toggleConversationSelection = (conversationId: string) => {
+    setSelectedConversationIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(conversationId)) {
+        newSet.delete(conversationId);
+      } else {
+        newSet.add(conversationId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllConversations = () => {
+    setSelectedConversationIds(new Set(conversations.map(c => c.id!)));
+  };
+
+  const deselectAllConversations = () => {
+    setSelectedConversationIds(new Set());
+  };
+
+  const handleDeleteSelectedConversations = async () => {
+    const count = selectedConversationIds.size;
+    if (count === 0) return;
+    
+    if (window.confirm(`Tem certeza que deseja excluir permanentemente ${count} conversa(s)? Esta ação não pode ser desfeita.`)) {
+      setIsLoading(true);
+      try {
+        await conversationService.deleteConversations(Array.from(selectedConversationIds));
+        alert(`${count} conversa(s) excluída(s) com sucesso!`);
+        setSelectedConversationIds(new Set());
+        loadConversations();
+        loadStatistics();
+      } catch (error) {
+        console.error('Erro ao excluir conversas:', error);
+        alert('Erro ao excluir conversas.');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  // Funções de seleção múltipla para usuários
+  const toggleUserSelection = (email: string) => {
+    setSelectedUserEmails(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(email)) {
+        newSet.delete(email);
+      } else {
+        newSet.add(email);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllUsers = () => {
+    setSelectedUserEmails(new Set(users.map(u => u.email)));
+  };
+
+  const deselectAllUsers = () => {
+    setSelectedUserEmails(new Set());
+  };
+
+  const handleDeleteSelectedUsers = async () => {
+    const count = selectedUserEmails.size;
+    if (count === 0) return;
+    
+    if (window.confirm(`Tem certeza que deseja excluir permanentemente ${count} usuário(s)? Esta ação não pode ser desfeita.`)) {
+      setIsLoading(true);
+      try {
+        await userService.deleteUsers(Array.from(selectedUserEmails));
+        alert(`${count} usuário(s) excluído(s) com sucesso!`);
+        setSelectedUserEmails(new Set());
+        loadUsers();
+        loadStatistics();
+      } catch (error) {
+        console.error('Erro ao excluir usuários:', error);
+        alert('Erro ao excluir usuários.');
       } finally {
         setIsLoading(false);
       }
@@ -442,6 +528,30 @@ export const AdminConversations: React.FC = () => {
       {view === 'conversations' && (
         <Card>
           <CardContent className="p-0">
+            {/* Barra de ações quando há seleção */}
+            {selectedConversationIds.size > 0 && (
+              <div className="p-4 bg-primary/10 border-b flex items-center justify-between">
+                <span className="text-sm font-medium">
+                  {selectedConversationIds.size} conversa(s) selecionada(s)
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={deselectAllConversations}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Desmarcar Todas
+                  </Button>
+                  <Button
+                    onClick={handleDeleteSelectedConversations}
+                    size="sm"
+                    variant="destructive"
+                  >
+                    Excluir Selecionadas
+                  </Button>
+                </div>
+              </div>
+            )}
             {isLoading ? (
               <div className="p-12 text-center">
                 <span className="loading loading-spinner loading-lg text-primary"></span>
@@ -456,6 +566,20 @@ export const AdminConversations: React.FC = () => {
                 <table className="table-standard">
                   <thead>
                     <tr>
+                      <th className="w-12">
+                        <input
+                          type="checkbox"
+                          checked={conversations.length > 0 && selectedConversationIds.size === conversations.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              selectAllConversations();
+                            } else {
+                              deselectAllConversations();
+                            }
+                          }}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                      </th>
                       <th>Usuário</th>
                       <th>Mensagens</th>
                       <th>Empresa</th>
@@ -467,6 +591,14 @@ export const AdminConversations: React.FC = () => {
                   <tbody>
                     {conversations.map((conv) => (
                       <tr key={conv.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedConversationIds.has(conv.id!)}
+                            onChange={() => toggleConversationSelection(conv.id!)}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                        </td>
                         <td className="font-medium">
                           {conv.userId}
                         </td>
@@ -538,6 +670,30 @@ export const AdminConversations: React.FC = () => {
       {view === 'users' && (
         <Card>
           <CardContent className="p-0">
+            {/* Barra de ações quando há seleção */}
+            {selectedUserEmails.size > 0 && (
+              <div className="p-4 bg-primary/10 border-b flex items-center justify-between">
+                <span className="text-sm font-medium">
+                  {selectedUserEmails.size} usuário(s) selecionado(s)
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={deselectAllUsers}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Desmarcar Todos
+                  </Button>
+                  <Button
+                    onClick={handleDeleteSelectedUsers}
+                    size="sm"
+                    variant="destructive"
+                  >
+                    Excluir Selecionados
+                  </Button>
+                </div>
+              </div>
+            )}
             {isLoading ? (
               <div className="p-12 text-center">
                 <span className="loading loading-spinner loading-lg text-primary"></span>
@@ -552,6 +708,20 @@ export const AdminConversations: React.FC = () => {
                 <table className="table-standard">
                   <thead>
                     <tr>
+                      <th className="w-12">
+                        <input
+                          type="checkbox"
+                          checked={users.length > 0 && selectedUserEmails.size === users.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              selectAllUsers();
+                            } else {
+                              deselectAllUsers();
+                            }
+                          }}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                      </th>
                       <th>Email</th>
                       <th>Nome</th>
                       <th>Empresa</th>
@@ -565,6 +735,14 @@ export const AdminConversations: React.FC = () => {
                   <tbody>
                     {users.map((user) => (
                       <tr key={user.id || user.email}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedUserEmails.has(user.email)}
+                            onChange={() => toggleUserSelection(user.email)}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                        </td>
                         <td className="font-medium">{user.email}</td>
                         <td>{user.firstName || ''} {user.lastName || ''}</td>
                         <td>

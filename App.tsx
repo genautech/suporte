@@ -11,6 +11,7 @@ import { auth } from './firebase';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { AdminClientView } from './components/AdminClientView';
 import { Toaster } from './components/ui/toaster';
+import { storeContext } from './lib/storeContext';
 
 type AppView = 'home' | 'userLogin' | 'adminLogin' | 'managerLogin';
 type AdminViewMode = 'admin' | 'client';
@@ -27,6 +28,7 @@ const App: React.FC = () => {
 
     useEffect(() => {
         // Detectar rota da URL (suporte incremental para /admin e /manager)
+        storeContext.detectAndStoreContext();
         const pathname = window.location.pathname;
         if (pathname === '/admin') {
             setView('adminLogin');

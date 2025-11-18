@@ -17,6 +17,20 @@ import { Company } from '../types';
 
 const companiesCollection = collection(db, 'companies');
 
+const normalizeStoreHost = (rawUrl?: string | null): string | null => {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  try {
+    const url = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+      ? new URL(trimmed)
+      : new URL(`https://${trimmed}`);
+    return url.host.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return null;
+  }
+};
+
 const companyFromFirestore = (docSnapshot: any): Company => {
   const data = docSnapshot.data();
   return {
@@ -263,6 +277,32 @@ export const companyService = {
         stack: error instanceof Error ? error.stack : undefined,
       });
       return 'Suporte Yoobe'; // Fallback
+    }
+  },
+
+  /**
+   * Identifica a empresa cadastrada com a URL/host da loja.
+   */
+  getCompanyByStoreUrl: async (storeUrl: string): Promise<string | null> => {
+    try {
+      const targetHost = normalizeStoreHost(storeUrl);
+      if (!targetHost) return null;
+
+      const snapshot = await getDocs(companiesCollection);
+      for (const docSnap of snapshot.docs) {
+        const company = companyFromFirestore(docSnap);
+        const companyHost = normalizeStoreHost(company.storeUrl);
+        if (!companyHost) continue;
+
+        if (companyHost === targetHost || targetHost.includes(companyHost)) {
+          return docSnap.id;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('[companyService] Erro ao buscar empresa por storeUrl:', error);
+      return null;
     }
   },
 };
