@@ -733,25 +733,76 @@ export const supportService = {
         };
         
         const statusText = statusMap[data.status] || data.status;
-        const emailHtmlBody = `
+        const isFinalized = data.status === 'resolvido' || data.status === 'fechado';
+        
+        // Construir corpo do email com mais detalhes se finalizado
+        let emailHtmlBody = `
           <div style="font-family: sans-serif; line-height: 1.6;">
             <h2>Olá ${ticketData.name},</h2>
-            <p>O status do seu chamado de suporte foi atualizado.</p>
+            ${isFinalized 
+              ? '<p>Seu chamado de suporte foi finalizado!</p>'
+              : '<p>O status do seu chamado de suporte foi atualizado.</p>'
+            }
             <div style="background-color: #f4f4f4; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
               <p><strong>ID do Chamado:</strong> #${id.substring(0, 6)}</p>
               <p><strong>Assunto:</strong> ${ticketData.subject}</p>
-              <p><strong>Novo Status:</strong> ${statusText}</p>
-            </div>
-            <p>Você pode acompanhar o progresso do seu chamado em nosso portal de suporte.</p>
+              <p><strong>Status:</strong> ${statusText}</p>
+              ${ticketData.orderNumber ? `<p><strong>Pedido Relacionado:</strong> ${ticketData.orderNumber}</p>` : ''}
+            </div>`;
+        
+        if (isFinalized) {
+          emailHtmlBody += `
+            <p>Obrigado por entrar em contato conosco. Esperamos ter resolvido sua questão satisfatoriamente.</p>
+            <p>Se precisar de mais alguma coisa, não hesite em abrir um novo chamado.</p>`;
+        } else {
+          emailHtmlBody += `<p>Você pode acompanhar o progresso do seu chamado em nosso portal de suporte.</p>`;
+        }
+        
+        emailHtmlBody += `
             <p>Atenciosamente,<br>Equipe Yoobe</p>
           </div>`;
         
+        // Enviar email ao cliente
         await supportService.sendTicketReplyEmail({
           to: ticketData.email,
-          subject: `Atualização do Chamado #${id.substring(0, 6)} - Status: ${statusText}`,
+          subject: isFinalized 
+            ? `Chamado Finalizado - #${id.substring(0, 6)}`
+            : `Atualização do Chamado #${id.substring(0, 6)} - Status: ${statusText}`,
           htmlBody: emailHtmlBody,
           bcc: 'atendimento@yoobe.co'
         });
+        
+        // Se finalizado, também enviar email ao gestor da empresa (se houver companyId)
+        if (isFinalized && ticketData.companyId) {
+          try {
+            const company = await companyService.getCompany(ticketData.companyId);
+            if (company && company.managerEmail) {
+              const managerEmailBody = `
+                <div style="font-family: sans-serif; line-height: 1.6;">
+                  <h2>Olá,</h2>
+                  <p>Um chamado de suporte da sua empresa foi finalizado.</p>
+                  <div style="background-color: #f4f4f4; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
+                    <p><strong>ID do Chamado:</strong> #${id.substring(0, 6)}</p>
+                    <p><strong>Cliente:</strong> ${ticketData.name} (${ticketData.email})</p>
+                    <p><strong>Assunto:</strong> ${ticketData.subject}</p>
+                    <p><strong>Status:</strong> ${statusText}</p>
+                    ${ticketData.orderNumber ? `<p><strong>Pedido Relacionado:</strong> ${ticketData.orderNumber}</p>` : ''}
+                  </div>
+                  <p>Atenciosamente,<br>Equipe Yoobe</p>
+                </div>`;
+              
+              await supportService.sendTicketReplyEmail({
+                to: company.managerEmail,
+                subject: `Chamado Finalizado - #${id.substring(0, 6)} - ${company.name}`,
+                htmlBody: managerEmailBody,
+                bcc: 'atendimento@yoobe.co'
+              });
+            }
+          } catch (managerEmailError) {
+            console.error('[updateTicket] Erro ao enviar email ao gestor:', managerEmailError);
+            // Não falhar se não conseguir enviar ao gestor
+          }
+        }
       } catch (emailError) {
         console.error('[updateTicket] Erro ao enviar email de atualização:', emailError);
         // Não falhar a atualização se o email falhar
@@ -1831,6 +1882,64 @@ export const supportService = {
     }
     
     return details;
+  },
+
+  // Obter estatísticas da empresa (chamados concluídos, pedidos Cubbo)
+  getCompanyStats: async (companyId: string): Promise<{
+    completedTickets: number;
+    totalOrders: number;
+    shippedOrders: number;
+  }> => {
+    try {
+      // Buscar tickets concluídos da empresa
+      const allTickets = await supportService.getTickets(false);
+      const companyTickets = allTickets.filter(t => 
+        t.companyId === companyId && 
+        (t.status === 'resolvido' || t.status === 'fechado')
+      );
+      
+      // Buscar usuários da empresa para buscar pedidos
+      const { userService } = await import('./userService');
+      const companyUsers = await userService.getUsersByCompany(companyId);
+      const companyUserEmails = new Set(companyUsers.map(u => u.email.toLowerCase()));
+      
+      // Buscar pedidos da empresa via Cubbo API
+      let totalOrders = 0;
+      let shippedOrders = 0;
+      
+      try {
+        // Buscar pedidos para cada email da empresa
+        for (const email of companyUserEmails) {
+          try {
+            const orders = await supportService.findOrdersByCustomer({ email });
+            totalOrders += orders.length;
+            shippedOrders += orders.filter(o => 
+              o.status?.toLowerCase() === 'shipped' || 
+              o.status?.toLowerCase() === 'delivered'
+            ).length;
+          } catch (error) {
+            console.error(`[getCompanyStats] Erro ao buscar pedidos para ${email}:`, error);
+            // Continuar para próximo email
+          }
+        }
+      } catch (error) {
+        console.error('[getCompanyStats] Erro ao buscar pedidos Cubbo:', error);
+        // Não falhar se não conseguir buscar pedidos
+      }
+      
+      return {
+        completedTickets: companyTickets.length,
+        totalOrders,
+        shippedOrders,
+      };
+    } catch (error) {
+      console.error('[getCompanyStats] Erro ao calcular estatísticas da empresa:', error);
+      return {
+        completedTickets: 0,
+        totalOrders: 0,
+        shippedOrders: 0,
+      };
+    }
   },
 
   searchFAQ: async (queryText: string): Promise<string> => {

@@ -45,9 +45,12 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
     const [companyGreeting, setCompanyGreeting] = useState<string>('Olá! 👋 Sou o assistente virtual. Como posso te ajudar hoje?');
     const [selectedOrders, setSelectedOrders] = useState<CubboOrder[]>([]);
     const [showOrderSelection, setShowOrderSelection] = useState(false);
+    const [botMessagesWithoutReply, setBotMessagesWithoutReply] = useState(0);
+    const [isSearching, setIsSearching] = useState(false);
     const messagesEndRef = useRef<null | HTMLDivElement>(null);
     const messageIdCounter = useRef<number>(0);
     const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+    const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -61,8 +64,41 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
             // Limpar todos os timeouts pendentes ao desmontar
             timeoutRefs.current.forEach(timeoutId => clearTimeout(timeoutId));
             timeoutRefs.current = [];
+            if (inactivityTimerRef.current) {
+                clearTimeout(inactivityTimerRef.current);
+            }
         };
     }, []);
+    
+    // Monitorar mensagens do bot sem resposta e encerrar após 2 mensagens
+    useEffect(() => {
+        if (botMessagesWithoutReply >= 2 && (isOpen || inline)) {
+            // Limpar timer anterior se existir
+            if (inactivityTimerRef.current) {
+                clearTimeout(inactivityTimerRef.current);
+            }
+            
+            // Aguardar 5 segundos antes de encerrar
+            inactivityTimerRef.current = setTimeout(() => {
+                addMessage(
+                    "Vejo que você não está respondendo. Você pode continuar o atendimento quando quiser! 😊\n\n" +
+                    "Basta enviar uma nova mensagem e eu estarei aqui para ajudar.",
+                    MessageSender.SYSTEM
+                );
+                // Colapsar chat se não for inline
+                if (!inline) {
+                    setIsOpen(false);
+                }
+                setBotMessagesWithoutReply(0);
+            }, 5000);
+            
+            return () => {
+                if (inactivityTimerRef.current) {
+                    clearTimeout(inactivityTimerRef.current);
+                }
+            };
+        }
+    }, [botMessagesWithoutReply, isOpen, inline]);
 
     // Inicializar sessionId e verificar usuário retornante
     useEffect(() => {
@@ -360,11 +396,13 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
         for (const call of functionCalls) {
             switch (call.name) {
                 case 'findCustomerOrders':
+                    setIsSearching(true);
                     try {
                         const orders = await supportService.findOrdersByCustomer({
                             email: user.email || null,
                             phone: user.phone || null
                         });
+                        setIsSearching(false);
                         
                         if (orders.length === 0) {
                             addMessage("Não encontrei nenhum pedido associado ao seu email ou telefone. Verifique se os dados estão corretos ou entre em contato conosco.", MessageSender.BOT);
@@ -390,6 +428,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                             addMessage(`\n${summary}\n\nVocê pode perguntar sobre um pedido específico informando o número do pedido.`, MessageSender.BOT);
                         }
                     } catch (error) {
+                        setIsSearching(false);
                         console.error("Error finding customer orders:", error);
                         addMessage("Desculpe, ocorreu um erro ao buscar seus pedidos. Por favor, tente novamente ou entre em contato conosco.", MessageSender.BOT);
                     }
@@ -413,8 +452,10 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                         }
                         
                         // Usar findCustomerOrders quando apenas email fornecido
+                        setIsSearching(true);
                         try {
                             const customerOrders = await supportService.findOrdersByCustomer({ email: emailToUse });
+                            setIsSearching(false);
                             if (customerOrders && customerOrders.length > 0) {
                                 if (customerOrders.length > 1) {
                                     // Múltiplos pedidos encontrados - exibir modal de seleção
@@ -435,6 +476,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                                 addMessage(`Não encontrei pedidos para o email ${emailToUse}. Este é o mesmo email usado na compra? Pode verificar se o email está correto?`, MessageSender.BOT);
                             }
                         } catch (error) {
+                            setIsSearching(false);
                             console.error("Error finding customer orders:", error);
                             addMessage("Desculpe, ocorreu um erro ao buscar seus pedidos. Por favor, tente novamente ou entre em contato conosco.", MessageSender.BOT);
                         }
@@ -474,127 +516,142 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                         addMessage(`Você está logado com ${user.email}. Este é o mesmo email usado na compra do pedido ${sanitizedOrderId}?`, MessageSender.BOT);
                     }
                     
-                    // Feedback imediato ao usuário (usar código sanitizado)
+                    // Feedback imediato ao usuário com loading visual
+                    setIsSearching(true);
                     if (sanitizedOrderId) {
                         addMessage(`Buscando informações do pedido ${sanitizedOrderId}... 🔍`, MessageSender.BOT);
                     } else {
                         addMessage('Buscando seus pedidos... 🔍', MessageSender.BOT);
                     }
                     
-                    // Se tem orderId, buscar pedido específico; se não, buscar por email
-                    const trackingInfo = await supportService.trackOrder(searchValue, providedEmail || user.email);
+                    try {
+                        // Se tem orderId, buscar pedido específico; se não, buscar por email
+                        const trackingInfo = await supportService.trackOrder(searchValue, providedEmail || user.email);
+                        setIsSearching(false);
                     
-                    // Se pedido não encontrado e não há email fornecido, solicitar email
-                    if (trackingInfo.status === 'Não encontrado' && sanitizedOrderId && !providedEmail && !user.email) {
-                        setPendingOrderSearch(sanitizedOrderId);
-                        setEmailRequestModal({
-                            orderId: sanitizedOrderId,
-                            reason: 'Para encontrar seu pedido, precisamos confirmar seu email. Por favor, informe o email usado na compra.'
-                        });
-                        addMessage(`Não encontrei o pedido ${sanitizedOrderId} sem validação de email. Vou solicitar seu email para continuar a busca.`, MessageSender.BOT);
-                        break;
-                    }
-                    
-                    // Se pedido não encontrado mesmo com email, tentar alternativas
-                    if (trackingInfo.status === 'Não encontrado') {
-                        // Tentar buscar por email do usuário logado para ver se há pedidos associados
-                        if (user.email && sanitizedOrderId) {
-                            try {
-                                const customerOrders = await supportService.findOrdersByCustomer({ email: user.email });
-                                if (customerOrders && customerOrders.length > 0) {
-                                    // Encontrou pedidos por email - mostrar lista e perguntar
+                        // Se pedido não encontrado e não há email fornecido, solicitar email
+                        if (trackingInfo.status === 'Não encontrado' && sanitizedOrderId && !providedEmail && !user.email) {
+                            setPendingOrderSearch(sanitizedOrderId);
+                            setEmailRequestModal({
+                                orderId: sanitizedOrderId,
+                                reason: 'Para encontrar seu pedido, precisamos confirmar seu email. Por favor, informe o email usado na compra.'
+                            });
+                            addMessage(`Não encontrei o pedido ${sanitizedOrderId} sem validação de email. Vou solicitar seu email para continuar a busca.`, MessageSender.BOT);
+                            break;
+                        }
+                        
+                        // Se pedido não encontrado mesmo com email, tentar alternativas
+                        if (trackingInfo.status === 'Não encontrado') {
+                            // Tentar buscar por email do usuário logado para ver se há pedidos associados
+                            if (user.email && sanitizedOrderId) {
+                                setIsSearching(true);
+                                try {
+                                    const customerOrders = await supportService.findOrdersByCustomer({ email: user.email });
+                                    setIsSearching(false);
+                                    if (customerOrders && customerOrders.length > 0) {
+                                        // Encontrou pedidos por email - mostrar lista e perguntar
+                                        addMessage(
+                                            `Não encontrei o pedido ${sanitizedOrderId} com esse código exato. ` +
+                                            `No entanto, encontrei ${customerOrders.length} pedido(s) associado(s) ao seu email ${user.email}. ` +
+                                            `Talvez o código esteja incompleto ou diferente. Veja os pedidos encontrados:`,
+                                            MessageSender.BOT
+                                        );
+                                        renderComponentInChat(<OrderList orders={customerOrders} />);
+                                        addMessage(
+                                            `Algum desses pedidos é o que você está procurando? ` +
+                                            `Se sim, me informe o número correto. ` +
+                                            `Se não encontrar seu pedido aqui, pode ser que:\n` +
+                                            `• O código do pedido esteja incompleto (ex: faltam letras no início como "R")\n` +
+                                            `• O email usado na compra seja diferente de ${user.email}\n` +
+                                            `• O código esteja incorreto\n\n` +
+                                            `Você pode me informar o código completo do pedido ou o email usado na compra?`,
+                                            MessageSender.BOT
+                                        );
+                                        orderFound = true; // Encontrou pedidos por email, mesmo que não seja o código exato
+                                        setAttemptsWithoutResolution(prev => Math.max(0, prev - 1)); // Reduzir tentativas já que encontrou algo
+                                    } else {
+                                        // Não encontrou pedidos por email também
+                                        addMessage(
+                                            `Não foi possível encontrar o pedido ${sanitizedOrderId} com esse código. ` +
+                                            `Também não encontrei pedidos associados ao email ${user.email}. ` +
+                                            `Isso pode acontecer se:\n` +
+                                            `• O código do pedido estiver incompleto (ex: faltam letras no início como "R" ou "LP")\n` +
+                                            `• O email usado na compra for diferente de ${user.email}\n` +
+                                            `• O código estiver incorreto\n\n` +
+                                            `Você pode:\n` +
+                                            `• Informar o código completo do pedido (com todas as letras e números)\n` +
+                                            `• Informar o email usado na compra (se for diferente)\n` +
+                                            `• Abrir um chamado de suporte para nossa equipe te ajudar`,
+                                            MessageSender.BOT
+                                        );
+                                        setAttemptsWithoutResolution(prev => prev + 1);
+                                    }
+                                } catch (error) {
+                                    setIsSearching(false);
+                                    console.error('[Chatbot] Erro ao buscar pedidos por email:', error);
                                     addMessage(
-                                        `Não encontrei o pedido ${sanitizedOrderId} com esse código exato. ` +
-                                        `No entanto, encontrei ${customerOrders.length} pedido(s) associado(s) ao seu email ${user.email}. ` +
-                                        `Talvez o código esteja incompleto ou diferente. Veja os pedidos encontrados:`,
-                                        MessageSender.BOT
-                                    );
-                                    renderComponentInChat(<OrderList orders={customerOrders} />);
-                                    addMessage(
-                                        `Algum desses pedidos é o que você está procurando? ` +
-                                        `Se sim, me informe o número correto. ` +
-                                        `Se não encontrar seu pedido aqui, pode ser que:\n` +
-                                        `• O código do pedido esteja incompleto (ex: faltam letras no início como "R")\n` +
-                                        `• O email usado na compra seja diferente de ${user.email}\n` +
-                                        `• O código esteja incorreto\n\n` +
-                                        `Você pode me informar o código completo do pedido ou o email usado na compra?`,
-                                        MessageSender.BOT
-                                    );
-                                    orderFound = true; // Encontrou pedidos por email, mesmo que não seja o código exato
-                                    setAttemptsWithoutResolution(prev => Math.max(0, prev - 1)); // Reduzir tentativas já que encontrou algo
-                                } else {
-                                    // Não encontrou pedidos por email também
-                                    addMessage(
-                                        `Não foi possível encontrar o pedido ${sanitizedOrderId} com esse código. ` +
-                                        `Também não encontrei pedidos associados ao email ${user.email}. ` +
-                                        `Isso pode acontecer se:\n` +
-                                        `• O código do pedido estiver incompleto (ex: faltam letras no início como "R" ou "LP")\n` +
-                                        `• O email usado na compra for diferente de ${user.email}\n` +
-                                        `• O código estiver incorreto\n\n` +
-                                        `Você pode:\n` +
-                                        `• Informar o código completo do pedido (com todas as letras e números)\n` +
-                                        `• Informar o email usado na compra (se for diferente)\n` +
-                                        `• Abrir um chamado de suporte para nossa equipe te ajudar`,
+                                        `Não foi possível encontrar o pedido ${sanitizedOrderId || 'informado'}. ` +
+                                        `Verifique se o código está completo e correto. ` +
+                                        `Se o código estiver incompleto (ex: faltam letras no início), informe o código completo. ` +
+                                        `Caso contrário, entre em contato conosco para mais informações.`,
                                         MessageSender.BOT
                                     );
                                     setAttemptsWithoutResolution(prev => prev + 1);
                                 }
-                            } catch (error) {
-                                console.error('[Chatbot] Erro ao buscar pedidos por email:', error);
+                            } else {
+                                // Não tem email do usuário logado
                                 addMessage(
                                     `Não foi possível encontrar o pedido ${sanitizedOrderId || 'informado'}. ` +
                                     `Verifique se o código está completo e correto. ` +
-                                    `Se o código estiver incompleto (ex: faltam letras no início), informe o código completo. ` +
+                                    `Códigos de pedido geralmente começam com letras (ex: R123456, LP12345). ` +
+                                    `Se o código estiver incompleto, informe o código completo. ` +
                                     `Caso contrário, entre em contato conosco para mais informações.`,
                                     MessageSender.BOT
                                 );
                                 setAttemptsWithoutResolution(prev => prev + 1);
                             }
+                            break;
+                        }
+                        
+                        // Pedido encontrado - resetar tentativas
+                        orderFound = true;
+                        setAttemptsWithoutResolution(0);
+                        
+                        // Adicionar orderNumber aos mencionados
+                        if (trackingInfo.order) {
+                            const orderNum = trackingInfo.order.order_number;
+                            if (orderNum && !mentionedOrderNumbers.includes(orderNum)) {
+                                setMentionedOrderNumbers(prev => [...prev, orderNum]);
+                            }
+                        }
+                        
+                        // Verificar se múltiplos pedidos foram encontrados por email
+                        if (trackingInfo.orders && trackingInfo.orders.length > 1) {
+                            // Múltiplos pedidos encontrados - exibir modal de seleção
+                            setSelectedOrders(trackingInfo.orders);
+                            setShowOrderSelection(true);
+                            addMessage(`Encontrei ${trackingInfo.orders.length} pedidos associados ao seu email. Por favor, selecione qual pedido deseja consultar.`, MessageSender.BOT);
+                        } else if (trackingInfo.orders && trackingInfo.orders.length === 1) {
+                            // Apenas um pedido encontrado - exibir diretamente
+                            const singleOrder = trackingInfo.orders[0];
+                            renderComponentInChat(<OrderList orders={[singleOrder]} />);
+                            addMessage(trackingInfo.details, MessageSender.BOT);
+                        } else if (trackingInfo.order) {
+                            // Pedido único encontrado - renderizar também para melhor visualização
+                            renderComponentInChat(<OrderList orders={[trackingInfo.order]} />);
+                            addMessage(trackingInfo.details, MessageSender.BOT);
                         } else {
-                            // Não tem email do usuário logado
-                            addMessage(
-                                `Não foi possível encontrar o pedido ${sanitizedOrderId || 'informado'}. ` +
-                                `Verifique se o código está completo e correto. ` +
-                                `Códigos de pedido geralmente começam com letras (ex: R123456, LP12345). ` +
-                                `Se o código estiver incompleto, informe o código completo. ` +
-                                `Caso contrário, entre em contato conosco para mais informações.`,
-                                MessageSender.BOT
-                            );
-                            setAttemptsWithoutResolution(prev => prev + 1);
+                            // Adicionar mensagem formatada com todas as informações
+                            addMessage(trackingInfo.details, MessageSender.BOT);
                         }
-                        break;
-                    }
-                    
-                    // Pedido encontrado - resetar tentativas
-                    orderFound = true;
-                    setAttemptsWithoutResolution(0);
-                    
-                    // Adicionar orderNumber aos mencionados
-                    if (trackingInfo.order) {
-                        const orderNum = trackingInfo.order.order_number;
-                        if (orderNum && !mentionedOrderNumbers.includes(orderNum)) {
-                            setMentionedOrderNumbers(prev => [...prev, orderNum]);
-                        }
-                    }
-                    
-                    // Verificar se múltiplos pedidos foram encontrados por email
-                    if (trackingInfo.orders && trackingInfo.orders.length > 1) {
-                        // Múltiplos pedidos encontrados - exibir modal de seleção
-                        setSelectedOrders(trackingInfo.orders);
-                        setShowOrderSelection(true);
-                        addMessage(`Encontrei ${trackingInfo.orders.length} pedidos associados ao seu email. Por favor, selecione qual pedido deseja consultar.`, MessageSender.BOT);
-                    } else if (trackingInfo.orders && trackingInfo.orders.length === 1) {
-                        // Apenas um pedido encontrado - exibir diretamente
-                        const singleOrder = trackingInfo.orders[0];
-                        renderComponentInChat(<OrderList orders={[singleOrder]} />);
-                        addMessage(trackingInfo.details, MessageSender.BOT);
-                    } else if (trackingInfo.order) {
-                        // Pedido único encontrado - renderizar também para melhor visualização
-                        renderComponentInChat(<OrderList orders={[trackingInfo.order]} />);
-                        addMessage(trackingInfo.details, MessageSender.BOT);
-                    } else {
-                        // Adicionar mensagem formatada com todas as informações
-                        addMessage(trackingInfo.details, MessageSender.BOT);
+                    } catch (error) {
+                        setIsSearching(false);
+                        console.error('[Chatbot] Erro ao buscar pedido:', error);
+                        addMessage(
+                            `Erro ao buscar informações do pedido. Por favor, tente novamente ou abra um chamado de suporte.`,
+                            MessageSender.BOT
+                        );
+                        setAttemptsWithoutResolution(prev => prev + 1);
                     }
                     break;
                 case 'initiateExchange':
@@ -641,10 +698,12 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                 case 'searchFAQ':
                     // Busca inteligente de FAQ usando Gemini
                     const query = call.args.query as string;
+                    setIsSearching(true);
                     addMessage(`Buscando informações sobre "${query}"... 🔍`, MessageSender.BOT);
                     
                     try {
                         const intelligentResult = await searchIntelligentFAQ(query, companyId);
+                        setIsSearching(false);
                         
                         if (intelligentResult.answer) {
                             addMessage(intelligentResult.answer, MessageSender.BOT);
@@ -677,6 +736,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                             addMessage(faqResult || 'Não encontrei informações sobre isso no nosso FAQ. Gostaria de abrir um chamado?', MessageSender.BOT);
                         }
                     } catch (error) {
+                        setIsSearching(false);
                         console.error('Error in intelligent FAQ search:', error);
                         // Fallback para busca simples
                         const faqResult = await supportService.searchFAQ(query);
@@ -1111,6 +1171,30 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                                     </motion.div>
                                 )
                             ))}
+                            
+                            {/* Indicador de loading durante buscas */}
+                            {isSearching && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="flex gap-3 flex-row"
+                                >
+                                    <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-secondary text-secondary-foreground">
+                                        <BotIcon className="w-5 h-5"/>
+                                    </div>
+                                    <div className="flex-1 max-w-[80%] flex flex-col gap-2">
+                                        <Card className="p-3 bg-card border-border">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Estou consultando informações...
+                                                </p>
+                                            </div>
+                                        </Card>
+                                    </div>
+                                </motion.div>
+                            )}
+                            
                             {showFeedback && currentConversationId && (
                                 <ConversationFeedback
                                     conversationId={currentConversationId}

@@ -8,6 +8,7 @@ import { userService } from '../services/userService';
 import { SupportArea } from './SupportArea';
 import { TicketDetailModal } from './TicketDetailModal';
 import { ProfileModal } from './ProfileModal';
+import { Chatbot } from './Chatbot';
 import { LogoutIcon, UserIcon } from './Icons';
 import { auth } from '../firebase';
 import { Button } from './ui/button';
@@ -38,6 +39,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
   const [profileUser, setProfileUser] = useState(user);
   const [companyId, setCompanyId] = useState<string>('general');
   const [companyName, setCompanyName] = useState<string>('Suporte Yoobe');
+  const [storeUrl, setStoreUrl] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     // Usar email real se fornecido (modo admin visualizando cliente), senão usar email do user
@@ -104,6 +106,10 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
           });
         }
       });
+      // Buscar storeUrl do usuário
+      userService.getUserStoreUrl(user.email).then((url) => {
+        setStoreUrl(url);
+      });
     }
   }, [user, loadData, adminSelectedCompanyId]);
 
@@ -150,6 +156,18 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
                 </span>
               </motion.div>
               <div className="flex items-center gap-4">
+                {storeUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(storeUrl, '_blank')}
+                    className="flex items-center gap-2"
+                  >
+                    <span>🛍️</span>
+                    <span className="hidden sm:inline">Voltar para a Loja</span>
+                    <span className="sm:hidden">Loja</span>
+                  </Button>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="rounded-full">
@@ -231,6 +249,20 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
         onClose={() => setIsProfileModalOpen(false)}
         onUpdate={handleProfileUpdate}
       />
+      
+      {/* Chat flutuante - sempre disponível */}
+      {user.email && user.email.trim() && !adminMode && (
+        <Chatbot
+          user={{
+            name: user.displayName || '',
+            email: user.email.trim(),
+            phone: user.phoneNumber || ''
+          }}
+          companyId={companyId}
+          onTicketCreated={loadData}
+          inline={false}
+        />
+      )}
     </>
   );
 };

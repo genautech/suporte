@@ -11,12 +11,13 @@ import { AdminKnowledgeBase } from './AdminKnowledgeBase';
 import { AdminCompanies } from './AdminCompanies';
 import { AdminConversations } from './AdminConversations';
 import { companyService } from '../services/companyService';
+import { conversationService } from '../services/conversationService';
 import { Company } from '../types';
 import { BrainIcon, LogoutIcon, MessageIcon } from './Icons'; // MessageIcon added
 import { SystemStatus } from './SystemStatus';
 import { Chatbot } from './Chatbot'; // New import for testing
 import { Button } from './ui/button';
-import { Card, CardContent } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Badge } from './ui/badge';
 import {
@@ -45,6 +46,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
     const [showArchived, setShowArchived] = useState(false);
     const [companies, setCompanies] = useState<Company[]>([]);
     const [selectedCompanyId, setSelectedCompanyId] = useState<string>('general');
+    const [npsStats, setNpsStats] = useState<{
+        average: number;
+        promoters: number;
+        passives: number;
+        detractors: number;
+        total: number;
+        promoterPercentage: number;
+        detractorPercentage: number;
+        nps: number;
+    } | null>(null);
+    const [finalizedCount, setFinalizedCount] = useState<number>(0);
+    const [isLoadingNps, setIsLoadingNps] = useState(false);
+    const [subjectFilter, setSubjectFilter] = useState<string>('all');
     
     const loadTickets = useCallback(async () => {
         setIsLoading(true);
@@ -71,6 +85,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
         };
         loadCompanies();
     }, []);
+    
+    useEffect(() => {
+        // Carregar estatísticas NPS quando view for 'tickets' ou inicializar
+        const loadNpsStats = async () => {
+            setIsLoadingNps(true);
+            try {
+                const stats = await conversationService.getNpsStats();
+                const count = await conversationService.getFinalizedInteractionsCount();
+                setNpsStats(stats);
+                setFinalizedCount(count);
+            } catch (error) {
+                console.error('Error loading NPS stats:', error);
+            } finally {
+                setIsLoadingNps(false);
+            }
+        };
+        loadNpsStats();
+    }, [view]);
     
     const handleEditTicket = (ticket: Ticket) => {
         setSelectedTicket(ticket);
@@ -135,19 +167,97 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
     const renderMainContent = () => {
         switch(view) {
             case 'tickets':
-                // Filtrar tickets baseado no toggle
-                const displayedTickets = showArchived 
+                // Filtrar tickets baseado no toggle e assunto
+                const displayedTickets = (showArchived 
                     ? tickets 
-                    : tickets.filter(t => t.status !== 'arquivado');
+                    : tickets.filter(t => t.status !== 'arquivado')
+                ).filter(t => {
+                    if (subjectFilter === 'all') return true;
+                    if (subjectFilter === 'pontos') return t.subject === 'pontos';
+                    return t.subject === subjectFilter;
+                });
                 
                 return (
                      <div>
+                        {/* Cards de Métricas NPS */}
+                        {npsStats && (
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">NPS Médio</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold">
+                                            {npsStats.nps > 0 ? '+' : ''}{npsStats.nps.toFixed(1)}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Média: {npsStats.average.toFixed(1)}/10
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                                
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Atendimentos Finalizados</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold">{finalizedCount}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Total com feedback
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                                
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Promotores</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold text-green-600">{npsStats.promoters}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {npsStats.promoterPercentage.toFixed(1)}% (9-10)
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                                
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Detratores</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold text-red-600">{npsStats.detractors}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {npsStats.detractorPercentage.toFixed(1)}% (0-6)
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        )}
+                        
                         <div className="flex justify-between items-center mb-6">
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900 mb-1">Chamados de Suporte</h1>
                                 <p className="text-sm text-gray-600">Gerencie todos os chamados de suporte dos clientes</p>
                             </div>
                             <div className="flex gap-3">
+                                <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+                                    <SelectTrigger className="w-[180px]">
+                                        <SelectValue placeholder="Filtrar por assunto" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Todos os assuntos</SelectItem>
+                                        <SelectItem value="pontos">Problema com Pontos</SelectItem>
+                                        <SelectItem value="cancelamento">Cancelamento</SelectItem>
+                                        <SelectItem value="reembolso">Reembolso</SelectItem>
+                                        <SelectItem value="troca">Troca</SelectItem>
+                                        <SelectItem value="produto_defeituoso">Produto com Defeito</SelectItem>
+                                        <SelectItem value="produto_nao_recebido">Produto Não Recebido</SelectItem>
+                                        <SelectItem value="produto_errado">Produto Errado</SelectItem>
+                                        <SelectItem value="atraso_entrega">Atraso na Entrega</SelectItem>
+                                        <SelectItem value="duvida_pagamento">Dúvida sobre Pagamento</SelectItem>
+                                        <SelectItem value="outro">Outro</SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input 
                                         type="checkbox" 

@@ -54,7 +54,15 @@ export const generateAuthCode = async (email: string): Promise<string> => {
  */
 export const validateAuthCode = async (email: string, code: string, markAsUsed: boolean = true): Promise<boolean> => {
   const normalizedEmail = email.toLowerCase().trim();
-  const normalizedCode = code.trim();
+  // Normalizar código: remover espaços e caracteres não numéricos, manter apenas dígitos
+  const normalizedCode = code.replace(/\D/g, '').trim();
+  
+  console.log('[validateAuthCode] Validating:', {
+    email: normalizedEmail,
+    codeLength: normalizedCode.length,
+    codeMasked: normalizedCode.replace(/\d/g, '*'),
+    markAsUsed
+  });
   
   // Find the code document
   const q = query(
@@ -64,9 +72,23 @@ export const validateAuthCode = async (email: string, code: string, markAsUsed: 
     where('used', '==', false)
   );
   
-  const querySnapshot = await getDocs(q);
+  let querySnapshot;
+  try {
+    querySnapshot = await getDocs(q);
+  } catch (error: any) {
+    console.error('[validateAuthCode] Firestore query error:', error);
+    // Se for erro de permissão, retornar false mas logar o erro
+    if (error.code === 'permission-denied') {
+      console.error('[validateAuthCode] Permission denied - check Firestore rules');
+    }
+    return false;
+  }
   
   if (querySnapshot.empty) {
+    console.warn('[validateAuthCode] No matching code found:', {
+      email: normalizedEmail,
+      codeLength: normalizedCode.length
+    });
     return false;
   }
   
@@ -77,19 +99,37 @@ export const validateAuthCode = async (email: string, code: string, markAsUsed: 
   const expiresAt = (codeData.expiresAt as Timestamp).toDate();
   const now = new Date();
   
+  console.log('[validateAuthCode] Code found, checking expiration:', {
+    expiresAt: expiresAt.toISOString(),
+    now: now.toISOString(),
+    expired: now > expiresAt
+  });
+  
   if (now > expiresAt) {
+    console.warn('[validateAuthCode] Code expired');
     // Code expired, mark as used anyway
     if (markAsUsed) {
-      await updateDoc(doc(db, 'authCodes', codeDoc.id), { used: true });
+      try {
+        await updateDoc(doc(db, 'authCodes', codeDoc.id), { used: true });
+      } catch (error) {
+        console.error('[validateAuthCode] Error marking expired code as used:', error);
+      }
     }
     return false;
   }
   
   // Mark code as used only if requested
   if (markAsUsed) {
-    await updateDoc(doc(db, 'authCodes', codeDoc.id), { used: true });
+    try {
+      await updateDoc(doc(db, 'authCodes', codeDoc.id), { used: true });
+      console.log('[validateAuthCode] Code marked as used');
+    } catch (error) {
+      console.error('[validateAuthCode] Error marking code as used:', error);
+      // Não falhar a validação se não conseguir marcar como usado
+    }
   }
   
+  console.log('[validateAuthCode] Code validated successfully');
   return true;
 };
 

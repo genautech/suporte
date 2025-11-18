@@ -72,7 +72,10 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
     const handleVerifyCode = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (authCode.length !== 4) {
+        // Normalizar código: remover espaços e caracteres não numéricos, manter apenas dígitos
+        const normalizedCode = authCode.replace(/\D/g, '');
+        
+        if (normalizedCode.length !== 4) {
             setError('O código deve ter 4 dígitos.');
             return;
         }
@@ -81,19 +84,30 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
         setError('');
         
         try {
+            // Normalizar email também
+            const normalizedEmail = email.toLowerCase().trim();
+            
+            console.log('[handleVerifyCode] Validating code:', {
+                email: normalizedEmail,
+                codeLength: normalizedCode.length,
+                code: normalizedCode.replace(/\d/g, '*') // Log mascarado para segurança
+            });
+            
             // Validate code first (don't mark as used yet - we'll mark it after successful auth)
-            const isValid = await validateAuthCode(email, authCode, false);
+            const isValid = await validateAuthCode(normalizedEmail, normalizedCode, false);
             
             if (!isValid) {
+                console.error('[handleVerifyCode] Code validation failed');
                 setError('Código inválido ou expirado. Solicite um novo código.');
                 setIsLoading(false);
                 return;
             }
             
+            console.log('[handleVerifyCode] Code validated successfully');
+            
             // Code is valid, now authenticate with Firebase
             // Generate a deterministic password based on email (user doesn't need to know it)
             // This ensures the same password is used every time for the same email
-            const normalizedEmail = email.toLowerCase().trim();
             const tempPassword = `temp_${normalizedEmail}_${normalizedEmail.length}_2025!`;
             
             // Strategy: Try to create user first (if doesn't exist), then sign in
@@ -104,7 +118,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                 await createUserWithEmailAndPassword(auth, normalizedEmail, tempPassword);
                 console.log('[handleVerifyCode] User created successfully');
                 // Mark code as used after successful authentication
-                await validateAuthCode(email, authCode, true);
+                await validateAuthCode(normalizedEmail, normalizedCode, true);
                 // User created, authentication successful - onAuthStateChanged will handle redirect
                 setError('');
                 return;
@@ -118,7 +132,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                         await signInWithEmailAndPassword(auth, normalizedEmail, tempPassword);
                         console.log('[handleVerifyCode] Sign in successful');
                         // Mark code as used after successful authentication
-                        await validateAuthCode(email, authCode, true);
+                        await validateAuthCode(normalizedEmail, normalizedCode, true);
                         // Authentication successful - onAuthStateChanged will handle redirect
                         setError('');
                         return;
@@ -132,7 +146,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                             
                             try {
                                 // Reset password using backend service (code is already validated)
-                                const resetResult = await resetPasswordWithCode(normalizedEmail, authCode);
+                                const resetResult = await resetPasswordWithCode(normalizedEmail, normalizedCode);
                                 
                                 if (resetResult.success) {
                                     console.log('[handleVerifyCode] Password reset successful, attempting sign in...');
@@ -140,7 +154,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                                     await signInWithEmailAndPassword(auth, normalizedEmail, tempPassword);
                                     console.log('[handleVerifyCode] Sign in successful after password reset');
                                     // Mark code as used after successful authentication
-                                    await validateAuthCode(email, authCode, true);
+                                    await validateAuthCode(normalizedEmail, normalizedCode, true);
                                     setError('');
                                     return;
                                 } else {
@@ -165,7 +179,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                         await signInWithEmailAndPassword(auth, normalizedEmail, tempPassword);
                         console.log('[handleVerifyCode] Sign in successful (fallback)');
                         // Mark code as used after successful authentication
-                        await validateAuthCode(email, authCode, true);
+                        await validateAuthCode(normalizedEmail, normalizedCode, true);
                         setError('');
                         return;
                     } catch (signInError: any) {

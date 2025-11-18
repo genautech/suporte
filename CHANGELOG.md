@@ -1,5 +1,43 @@
 # Changelog - Sistema de Suporte
 
+## [v1.8.0] - 2025-01-XX
+
+### 🎉 Novas Funcionalidades
+
+#### Sistema de Pontos
+- **Novo Tipo de Chamado**: Adicionado assunto "pontos" para problemas com sistema de pontos/fidelidade
+- **Formulário Especializado**: Formulário com campos específicos para problemas de pontos (tipo de problema, quantidade de pontos, pedido relacionado)
+- **Detecção Inteligente**: Chatbot detecta automaticamente menções de problemas com pontos
+- **Respostas Tranquilizadoras**: Chatbot acalma usuários e explica o processo de resolução
+- **Memória de Resoluções**: Sistema inclui resoluções anteriores de problemas com pontos no contexto do chat
+- **Filtro Admin**: Filtro por assunto no painel admin incluindo "Problema com Pontos"
+
+#### Endereço da Loja (Store URL)
+- **Cadastro na Empresa**: Admin pode cadastrar URL da loja no cadastro de empresas
+- **Atribuição Automática**: URL da loja é automaticamente atribuída aos usuários quando empresa é identificada
+- **Botão "Voltar para a Loja"**: Botão visível no dashboard do cliente quando URL da loja está disponível
+- **Responsivo**: Botão adapta texto para mobile ("Loja") e desktop ("Voltar para a Loja")
+
+### 🔧 Melhorias de UX
+
+#### Responsividade
+- **Abas Visíveis**: Corrigido problema onde abas eram ocultadas em mobile
+- **Layout Flexível**: TabsList agora usa flex com wrap para garantir visibilidade de todas as abas
+- **Scroll Horizontal**: Abas podem fazer scroll horizontal quando necessário em telas pequenas
+- **Botão de Chamado**: Botão "Abrir Chamado" agora visível na aba de chat
+
+#### Chatbot
+- **Memória Aprimorada**: Sistema busca e inclui resoluções anteriores de tickets de pontos no contexto
+- **Referência a Casos Anteriores**: Chatbot pode mencionar que casos similares foram resolvidos anteriormente
+- **Processo de Resolução**: Informações sobre prazo de retorno (3 dias úteis) e processo de investigação
+
+### 🐛 Correções
+
+- ✅ Corrigido layout responsivo das abas que ocultava aba de chat em mobile
+- ✅ Adicionado botão "Abrir Chamado" na aba de chat
+- ✅ Melhorada detecção e tratamento de problemas com pontos no chatbot
+- ✅ Adicionado contexto de resoluções anteriores no buildFAQContext
+
 ## [v1.7.0] - 2025-01-XX
 
 ### 🔧 Correções Técnicas (2025-01-XX)

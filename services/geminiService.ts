@@ -105,14 +105,50 @@ const tools: FunctionDeclaration[] = [
 const buildFAQContext = async (companyId?: string): Promise<string> => {
   try {
     const faqs = await faqService.getFAQEntries(undefined, companyId);
-    if (faqs.length === 0) return '';
+    let faqText = '';
     
-    const faqText = faqs
-      .map(faq => `Q: ${faq.question}\nR: ${faq.answer}`)
-      .join('\n\n');
+    if (faqs.length > 0) {
+      faqText = faqs
+        .map(faq => `Q: ${faq.question}\nR: ${faq.answer}`)
+        .join('\n\n');
+    }
+    
+    // Buscar resoluções de tickets de pontos resolvidos
+    let pointsResolutionsText = '';
+    try {
+      const { supportService } = await import('./supportService');
+      const allTickets = await supportService.getTickets(true); // Incluir arquivados também
+      
+      // Filtrar tickets de pontos resolvidos (resolvido ou fechado)
+      const resolvedPointsTickets = allTickets
+        .filter(ticket => 
+          ticket.subject === 'pontos' && 
+          (ticket.status === 'resolvido' || ticket.status === 'fechado') &&
+          ticket.description
+        )
+        .slice(0, 5); // Limitar a 5 exemplos mais recentes
+      
+      if (resolvedPointsTickets.length > 0) {
+        const resolutions = resolvedPointsTickets.map(ticket => {
+          const resolutionInfo = ticket.description || '';
+          const orderNumber = ticket.orderNumber ? ` (Pedido: ${ticket.orderNumber})` : '';
+          return `- Problema: ${ticket.description?.substring(0, 200) || 'Problema com pontos'}${orderNumber}\n  Resolução: Ticket investigado e resolvido pela equipe. Pontos restaurados em até 3 dias úteis quando identificada inconformidade.`;
+        }).join('\n\n');
+        
+        pointsResolutionsText = `\n\nRESOLUÇÕES DE PROBLEMAS COM PONTOS (Casos Anteriores):
+${resolutions}
+
+Use estas informações para tranquilizar clientes e explicar o processo de resolução quando mencionarem problemas com pontos.`;
+      }
+    } catch (error) {
+      console.error('[geminiService] Erro ao buscar resoluções de pontos:', error);
+      // Não falhar se não conseguir buscar resoluções
+    }
+    
+    if (!faqText && !pointsResolutionsText) return '';
     
     return `\n\nFAQ DISPONÍVEL (Base de Conhecimento):
-${faqText}
+${faqText}${pointsResolutionsText}
 
 Use estas informações quando o usuário fizer perguntas relacionadas.
 Seja natural e não cite literalmente, mas use o conhecimento para responder de forma amigável.`;
@@ -571,6 +607,21 @@ Use palavras-chave e contexto da conversa para identificar o tipo correto:
   - Quando usar: Dúvidas sobre pagamento, cobrança, estorno ou método de pagamento
   - Contexto: Cliente tem dúvidas sobre como foi cobrado, se foi cobrado corretamente, ou sobre método de pagamento
   - Perguntas úteis: Tipo de dúvida (método, processamento, duplicado, reembolso, parcelamento), método de pagamento utilizado, ID da transação se disponível
+  
+- **pontos**:
+  - Palavras-chave: "pontos", "meus pontos", "pontos sumiram", "pontos errados", "desconto de pontos", "pontos duplicados", "pontos não creditados", "problema com pontos", "inconsistência pontos"
+  - Quando usar: Cliente menciona problemas ou inconsistências com sistema de pontos/fidelidade
+  - Contexto: Cliente relata que pontos foram descontados incorretamente, sumiram, foram duplicados ou não foram creditados
+  - IMPORTANTE: Acalme o usuário explicando que podem ocorrer inconsistências e que vamos investigar
+  - Perguntas essenciais:
+    1. Qual pedido está relacionado ao problema? (se aplicável)
+    2. Quantos pontos você tinha disponível antes do problema?
+    3. O que você percebeu de errado? (menos pontos? pontos sumiram? desconto duplicado?)
+  - Informação importante: Em caso de identificação de inconformidade, os pontos retornam para o cliente em até 3 dias úteis
+  - Sempre oriente a abertura de chamado específico para "pontos" para investigação interna
+  - Template de resposta tranquilizadora:
+    "Entendo sua preocupação com os pontos. Podem ocorrer inconsistências no sistema de pontos e estamos aqui para ajudar a resolver isso. Vou abrir um chamado específico para nossa equipe investigar internamente. Em caso de identificação de inconformidade, seus pontos serão restaurados em até 3 dias úteis. Para investigarmos melhor, preciso de algumas informações: qual pedido está relacionado (se houver), quantos pontos você tinha disponível antes do problema, e o que exatamente você percebeu de errado?"
+  - **RESOLUÇÕES DE CASOS ANTERIORES**: Quando mencionar problemas com pontos, você pode referenciar que casos similares foram resolvidos anteriormente pela equipe, sempre restaurando os pontos quando identificada a inconformidade. Use o contexto de resoluções anteriores (disponível no FAQ) para tranquilizar o cliente e explicar o processo.
 
 **Quando usar 'openSupportTicket':**
 - Cliente solicita explicitamente abrir chamado
@@ -593,6 +644,8 @@ Use palavras-chave e contexto da conversa para identificar o tipo correto:
   - Cliente: "Recebi produto diferente do que pedi" → openSupportTicket(subject: 'produto_errado')
   - Cliente: "Meu pedido está atrasado" → openSupportTicket(subject: 'atraso_entrega')
   - Cliente: "Quero reembolso do meu pedido" → openSupportTicket(subject: 'reembolso')
+  - Cliente: "Meus pontos sumiram" ou "Foi descontado pontos duas vezes" → openSupportTicket(subject: 'pontos')
+  - Cliente: "Tenho menos pontos do que deveria" → openSupportTicket(subject: 'pontos')
 
 **MAPEAMENTO DE PROBLEMAS PARA TIPOS DE CHAMADO:**
 
@@ -628,7 +681,7 @@ Guia prático para identificar o tipo correto baseado no problema mencionado:
 
 **ENVIO DE EMAILS - REGRA CRÍTICA:**
 
-- **IMPORTANTE**: TODOS os 9 tipos de assunto de chamado enviam email de confirmação automaticamente:
+- **IMPORTANTE**: TODOS os 10 tipos de assunto de chamado enviam email de confirmação automaticamente:
   - cancelamento
   - reembolso
   - troca
@@ -637,6 +690,7 @@ Guia prático para identificar o tipo correto baseado no problema mencionado:
   - produto_errado
   - atraso_entrega
   - duvida_pagamento
+  - pontos
   - outro
 
 - **SEMPRE informe ao cliente**: Quando criar QUALQUER tipo de chamado, sempre mencione: "Você receberá um email de confirmação em breve para [email_real_do_usuario]"

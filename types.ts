@@ -158,7 +158,8 @@ export interface Conversation {
   archived?: boolean; // Se a conversa foi arquivada
   aiInsights?: ConversationAIInsights; // Insights gerados pelo Gemini AI
   feedback?: {
-    rating: number; // 1-5 estrelas
+    rating?: number; // 1-5 estrelas (legado)
+    npsScore?: number; // 0-10 NPS
     comment?: string;
     timestamp: number;
   };
@@ -201,6 +202,7 @@ export type TicketSubject =
   | 'produto_errado'
   | 'atraso_entrega'
   | 'duvida_pagamento'
+  | 'pontos'
   | 'outro';
 
 export interface FormField {
@@ -278,6 +280,7 @@ export interface SupportUser {
   totalTickets: number; // Total de tickets criados
   assignedCompanyId?: string; // CompanyId atribuído manualmente (quando domínio não corresponde)
   autoDetectedCompanyId?: string; // CompanyId detectado automaticamente pelo domínio
+  storeUrl?: string; // URL da loja (atribuído automaticamente da empresa identificada)
   createdAt: number;
   updatedAt: number;
 }

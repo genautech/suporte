@@ -28,6 +28,7 @@ const companyFromFirestore = (docSnapshot: any): Company => {
     managerEmail: data.managerEmail || '',
     managerName: data.managerName || '',
     managerAccessEnabled: data.managerAccessEnabled || false,
+    storeUrl: data.storeUrl || undefined,
     createdAt: (data.createdAt as Timestamp)?.toDate().getTime() || Date.now(),
     updatedAt: (data.updatedAt as Timestamp)?.toDate().getTime() || Date.now(),
   } as Company;
@@ -216,6 +217,16 @@ export const companyService = {
   /**
    * Retorna a saudação personalizada da empresa
    */
+  getCompanyStoreUrl: async (companyId: string): Promise<string | null> => {
+    try {
+      const company = await companyService.getCompany(companyId);
+      return company?.storeUrl || null;
+    } catch (error) {
+      console.error('[companyService] Erro ao buscar URL da loja:', error);
+      return null;
+    }
+  },
+
   getCompanyGreeting: async (companyId: string): Promise<string> => {
     try {
       const company = await companyService.getCompany(companyId);

@@ -166,23 +166,112 @@ export const conversationService = {
   },
 
   // Adicionar feedback à conversa
+  // Adicionar feedback NPS (0-10) à conversa
   addFeedback: async (
     conversationId: string,
-    rating: number,
-    comment?: string
+    rating: number, // Rating 1-5 (legado) ou NPS 0-10
+    comment?: string,
+    isNps: boolean = false // Se true, rating é NPS (0-10), senão é rating (1-5)
   ): Promise<void> => {
     try {
+      const feedbackData: any = {
+        comment: comment || undefined,
+        timestamp: Date.now(),
+      };
+      
+      if (isNps) {
+        feedbackData.npsScore = rating; // NPS 0-10
+      } else {
+        feedbackData.rating = rating; // Rating 1-5 (legado)
+      }
+      
       await conversationService.updateConversation(conversationId, {
-        feedback: {
-          rating,
-          comment,
-          timestamp: Date.now(),
-        },
+        feedback: feedbackData,
         resolved: true,
       });
     } catch (error) {
       console.error('[conversationService] Erro ao adicionar feedback:', error);
       throw error;
+    }
+  },
+  
+  // Obter estatísticas NPS
+  getNpsStats: async (): Promise<{
+    average: number;
+    promoters: number; // 9-10
+    passives: number; // 7-8
+    detractors: number; // 0-6
+    total: number;
+    promoterPercentage: number;
+    detractorPercentage: number;
+    nps: number; // NPS = % Promotores - % Detratores
+  }> => {
+    try {
+      const allConversations = await conversationService.getAllConversations();
+      const conversationsWithNps = allConversations.filter(
+        conv => conv.feedback && conv.feedback.npsScore !== undefined && conv.feedback.npsScore !== null
+      );
+      
+      if (conversationsWithNps.length === 0) {
+        return {
+          average: 0,
+          promoters: 0,
+          passives: 0,
+          detractors: 0,
+          total: 0,
+          promoterPercentage: 0,
+          detractorPercentage: 0,
+          nps: 0,
+        };
+      }
+      
+      const npsScores = conversationsWithNps.map(conv => conv.feedback!.npsScore!);
+      const average = npsScores.reduce((sum, score) => sum + score, 0) / npsScores.length;
+      
+      const promoters = npsScores.filter(score => score >= 9).length;
+      const passives = npsScores.filter(score => score >= 7 && score < 9).length;
+      const detractors = npsScores.filter(score => score <= 6).length;
+      
+      const total = conversationsWithNps.length;
+      const promoterPercentage = (promoters / total) * 100;
+      const detractorPercentage = (detractors / total) * 100;
+      const nps = promoterPercentage - detractorPercentage;
+      
+      return {
+        average: Math.round(average * 10) / 10, // Arredondar para 1 casa decimal
+        promoters,
+        passives,
+        detractors,
+        total,
+        promoterPercentage: Math.round(promoterPercentage * 10) / 10,
+        detractorPercentage: Math.round(detractorPercentage * 10) / 10,
+        nps: Math.round(nps * 10) / 10,
+      };
+    } catch (error) {
+      console.error('[conversationService] Erro ao calcular estatísticas NPS:', error);
+      return {
+        average: 0,
+        promoters: 0,
+        passives: 0,
+        detractors: 0,
+        total: 0,
+        promoterPercentage: 0,
+        detractorPercentage: 0,
+        nps: 0,
+      };
+    }
+  },
+  
+  // Obter quantidade de atendimentos finalizados (com feedback)
+  getFinalizedInteractionsCount: async (): Promise<number> => {
+    try {
+      const allConversations = await conversationService.getAllConversations();
+      return allConversations.filter(
+        conv => conv.feedback && (conv.feedback.npsScore !== undefined || conv.feedback.rating !== undefined)
+      ).length;
+    } catch (error) {
+      console.error('[conversationService] Erro ao contar atendimentos finalizados:', error);
+      return 0;
     }
   },
 

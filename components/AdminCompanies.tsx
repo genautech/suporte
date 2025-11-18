@@ -25,6 +25,7 @@ export const AdminCompanies: React.FC = () => {
     managerName: '',
     managerPassword: '',
     managerAccessEnabled: false,
+    storeUrl: '',
   });
   const [showPassword, setShowPassword] = useState(false);
 
@@ -55,6 +56,7 @@ export const AdminCompanies: React.FC = () => {
       managerName: '',
       managerPassword: '',
       managerAccessEnabled: false,
+      storeUrl: '',
     });
     setShowPassword(false);
     setIsDialogOpen(true);
@@ -71,6 +73,7 @@ export const AdminCompanies: React.FC = () => {
       managerName: company.managerName,
       managerPassword: '',
       managerAccessEnabled: company.managerAccessEnabled,
+      storeUrl: company.storeUrl || '',
     });
     setShowPassword(false);
     setIsDialogOpen(true);
@@ -102,6 +105,7 @@ export const AdminCompanies: React.FC = () => {
         managerEmail: formData.managerEmail.toLowerCase().trim(),
         managerName: formData.managerName,
         managerAccessEnabled: formData.managerAccessEnabled,
+        storeUrl: formData.storeUrl.trim() || undefined,
       };
 
       // Validar senha se acesso está habilitado e email preenchido

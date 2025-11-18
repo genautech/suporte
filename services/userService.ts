@@ -65,11 +65,30 @@ export const userService = {
       
       // Detectar empresa do usuário (se ainda não foi atribuída manualmente)
       let autoDetectedCompanyId: string | undefined;
+      let storeUrl: string | undefined;
       if (isNewUser || !existingData?.assignedCompanyId) {
         try {
           autoDetectedCompanyId = await companyService.getCompanyFromEmail(normalizedEmail);
+          // Buscar storeUrl da empresa identificada
+          if (autoDetectedCompanyId) {
+            try {
+              storeUrl = await companyService.getCompanyStoreUrl(autoDetectedCompanyId) || undefined;
+            } catch (error) {
+              console.error('[userService] Erro ao buscar storeUrl da empresa:', error);
+            }
+          }
         } catch (error) {
           console.error('[userService] Erro ao detectar empresa:', error);
+        }
+      } else {
+        // Se empresa já foi atribuída, buscar storeUrl dela também
+        const companyId = existingData.assignedCompanyId || existingData.autoDetectedCompanyId;
+        if (companyId) {
+          try {
+            storeUrl = await companyService.getCompanyStoreUrl(companyId) || undefined;
+          } catch (error) {
+            console.error('[userService] Erro ao buscar storeUrl da empresa atribuída:', error);
+          }
         }
       }
       
@@ -92,6 +111,7 @@ export const userService = {
         if (additionalData?.lastName) updateData.lastName = additionalData.lastName;
         if (additionalData?.phone) updateData.phone = additionalData.phone;
         if (autoDetectedCompanyId) updateData.autoDetectedCompanyId = autoDetectedCompanyId;
+        if (storeUrl) updateData.storeUrl = storeUrl;
       } else {
         // Atualizar usuário existente
         updateData.totalLogins = (existingData.totalLogins || 0) + 1;
@@ -104,6 +124,10 @@ export const userService = {
         // Atualizar companyId apenas se ainda não foi atribuído manualmente
         if (!existingData.assignedCompanyId && autoDetectedCompanyId) {
           updateData.autoDetectedCompanyId = autoDetectedCompanyId;
+        }
+        // Atualizar storeUrl se disponível (sempre atualizar para refletir mudanças na empresa)
+        if (storeUrl !== undefined) {
+          updateData.storeUrl = storeUrl;
         }
       }
       
@@ -165,11 +189,12 @@ export const userService = {
         lastAccessAt: Date.now(),
         totalLogins: 1,
         totalConversations: 0,
-        totalTickets: 0,
-        autoDetectedCompanyId: autoDetectedCompanyId,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      } as SupportUser;
+          totalTickets: 0,
+          autoDetectedCompanyId: autoDetectedCompanyId,
+          storeUrl: storeUrl,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        } as SupportUser;
     } catch (error) {
       console.error('[userService] Erro ao registrar login:', error);
       throw error;

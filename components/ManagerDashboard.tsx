@@ -10,7 +10,7 @@ import { AdminKnowledgeBase } from './AdminKnowledgeBase';
 import { Conversation, MessageSender } from '../types';
 import { LogoutIcon } from './Icons';
 import { Button } from './ui/button';
-import { Card, CardContent } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { motion } from 'framer-motion';
@@ -31,6 +31,12 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
     const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [companyName, setCompanyName] = useState<string>('');
+    const [companyStats, setCompanyStats] = useState<{
+        completedTickets: number;
+        totalOrders: number;
+        shippedOrders: number;
+    } | null>(null);
+    const [isLoadingStats, setIsLoadingStats] = useState(false);
     
     useEffect(() => {
         // Carregar nome da empresa
@@ -45,6 +51,20 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
         }).catch((error) => {
             console.error('[ManagerDashboard] Erro ao carregar nome da empresa:', error);
         });
+        
+        // Carregar estatísticas da empresa
+        const loadStats = async () => {
+            setIsLoadingStats(true);
+            try {
+                const stats = await supportService.getCompanyStats(companyId);
+                setCompanyStats(stats);
+            } catch (error) {
+                console.error('[ManagerDashboard] Erro ao carregar estatísticas:', error);
+            } finally {
+                setIsLoadingStats(false);
+            }
+        };
+        loadStats();
     }, [companyId]);
     
     const loadTickets = useCallback(async () => {
@@ -178,6 +198,47 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
             case 'tickets':
                 return (
                     <div>
+                        {/* Cards de Estatísticas */}
+                        {companyStats && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Chamados Concluídos</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold">{companyStats.completedTickets}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Resolvidos e fechados
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                                
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Pedidos Realizados</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold">{companyStats.totalOrders}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Total de pedidos na Cubbo
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                                
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Pedidos Enviados</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold text-green-600">{companyStats.shippedOrders}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Enviados e entregues
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        )}
+                        
                         <div className="flex justify-between items-center mb-6">
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900 mb-1">Chamados de Suporte</h1>

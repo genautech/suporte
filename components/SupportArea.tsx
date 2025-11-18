@@ -36,14 +36,20 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
   companyId,
   adminMode = false
 }) => {
-  const [activeTab, setActiveTab] = useState<'orders' | 'tickets' | 'chat' | 'faq' | 'manage-faq'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'tickets' | 'chat' | 'faq' | 'manage-faq'>('chat');
   const [selectedOrder, setSelectedOrder] = useState<CubboOrder | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isTicketFormOpen, setIsTicketFormOpen] = useState(false);
+  const [ticketOrderContext, setTicketOrderContext] = useState<CubboOrder | null>(null);
 
   const handleOrderClick = (order: CubboOrder) => {
     setSelectedOrder(order);
     setIsOrderModalOpen(true);
+  };
+  
+  const handleOpenTicketWithOrder = (order: CubboOrder) => {
+    setTicketOrderContext(order);
+    setIsTicketFormOpen(true);
   };
 
   const handleCloseOrderModal = () => {
@@ -53,6 +59,7 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
 
   const handleTicketCreated = (ticketId: string) => {
     setIsTicketFormOpen(false);
+    setTicketOrderContext(null);
     onReload();
     setActiveTab('tickets');
   };
@@ -60,47 +67,82 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
   return (
     <>
     <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-4 md:space-y-6">
-      <TabsList className={`grid w-full overflow-x-auto ${adminMode ? 'grid-cols-2 lg:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4'} gap-1 md:gap-2`}>
-        <TabsTrigger value="orders" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">📦 <span className="hidden sm:inline">Meus </span>Pedidos</TabsTrigger>
-        <TabsTrigger value="tickets" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">🎫 Chamados</TabsTrigger>
-        <TabsTrigger value="faq" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">❓ FAQ</TabsTrigger>
-        <TabsTrigger value="chat" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">💬 <span className="hidden sm:inline">Chat </span>Suporte</TabsTrigger>
+      <TabsList className={`flex w-full overflow-x-auto ${adminMode ? 'flex-wrap sm:flex-nowrap' : 'flex-wrap sm:flex-nowrap'} gap-1 md:gap-2 pb-1`}>
+        <TabsTrigger value="orders" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px] flex-shrink-0">📦 <span className="hidden sm:inline">Meus </span>Pedidos</TabsTrigger>
+        <TabsTrigger value="tickets" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px] flex-shrink-0">🎫 Chamados</TabsTrigger>
+        <TabsTrigger value="faq" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px] flex-shrink-0">❓ FAQ</TabsTrigger>
+        <TabsTrigger value="chat" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px] flex-shrink-0">💬 <span className="hidden sm:inline">Chat </span>Suporte</TabsTrigger>
         {adminMode && (
-          <TabsTrigger value="manage-faq" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">⚙️ <span className="hidden sm:inline">Gerenciar </span>FAQ</TabsTrigger>
+          <TabsTrigger value="manage-faq" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px] flex-shrink-0">⚙️ <span className="hidden sm:inline">Gerenciar </span>FAQ</TabsTrigger>
         )}
       </TabsList>
 
       <TabsContent value="orders" className="min-h-[300px] md:min-h-[400px]">
-        <Card>
-          <CardHeader className="p-4 md:p-6">
-            <CardTitle className="flex items-center text-lg md:text-xl">
-              <span className="text-xl md:text-2xl mr-2">📦</span>
-              Meus Pedidos
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 md:p-6">
-            {isLoading ? (
-              <div className="text-center p-8 md:p-12">
-                <span className="loading loading-spinner loading-lg text-primary"></span>
-                <p className="mt-4 text-muted-foreground font-medium text-sm md:text-base">Buscando seus pedidos...</p>
+        <div className="space-y-4 md:space-y-6">
+          {/* FAQ Highlights - Seção destacada */}
+          <Card className="bg-gradient-to-br from-primary/5 via-background to-secondary/5 border-primary/20">
+            <CardHeader className="p-4 md:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="flex items-center text-lg md:text-xl">
+                  <span className="text-xl md:text-2xl mr-2">❓</span>
+                  <span className="hidden sm:inline">Perguntas </span>Frequentes
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveTab('faq')}
+                    className="min-h-[44px] text-sm"
+                  >
+                    Ver Todas
+                  </Button>
+                  <Button 
+                    onClick={() => setIsTicketFormOpen(true)}
+                    size="sm"
+                    className="min-h-[44px] text-sm"
+                  >
+                    Abrir Chamado
+                  </Button>
+                </div>
               </div>
-            ) : orders.length === 0 ? (
-              <div className="text-center p-8 md:p-12">
-                <div className="text-5xl md:text-7xl mb-4 animate-bounce">📭</div>
-                <p className="text-base md:text-lg font-semibold text-foreground mb-2">
-                  Nenhum pedido encontrado
-                </p>
-                <p className="text-xs md:text-sm text-muted-foreground">
-                  Seus pedidos aparecerão aqui quando fizer uma compra.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3 md:space-y-4">
-                <OrderList orders={orders} onOrderClick={handleOrderClick} />
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="p-4 md:p-6">
+              <IntelligentFAQSearch onOpenTicket={() => setIsTicketFormOpen(true)} companyId={companyId} />
+            </CardContent>
+          </Card>
+
+          {/* Pedidos */}
+          <Card>
+            <CardHeader className="p-4 md:p-6">
+              <CardTitle className="flex items-center text-lg md:text-xl">
+                <span className="text-xl md:text-2xl mr-2">📦</span>
+                Meus Pedidos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 md:p-6">
+              {isLoading ? (
+                <div className="text-center p-8 md:p-12">
+                  <span className="loading loading-spinner loading-lg text-primary"></span>
+                  <p className="mt-4 text-muted-foreground font-medium text-sm md:text-base">Buscando seus pedidos...</p>
+                </div>
+              ) : orders.length === 0 ? (
+                <div className="text-center p-8 md:p-12">
+                  <div className="text-5xl md:text-7xl mb-4 animate-bounce">📭</div>
+                  <p className="text-base md:text-lg font-semibold text-foreground mb-2">
+                    Nenhum pedido encontrado
+                  </p>
+                  <p className="text-xs md:text-sm text-muted-foreground">
+                    Seus pedidos aparecerão aqui quando fizer uma compra.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 md:space-y-4">
+                  <OrderList orders={orders} onOrderClick={handleOrderClick} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </TabsContent>
 
       <TabsContent value="tickets" className="min-h-[300px] md:min-h-[400px]">
@@ -220,6 +262,20 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
 
       <TabsContent value="chat" className="min-h-[500px] md:min-h-[600px]">
         <Card className="flex flex-col h-full">
+          <CardHeader className="p-4 md:p-6 pb-2 md:pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <CardTitle className="flex items-center text-lg md:text-xl">
+                <span className="text-xl md:text-2xl mr-2">💬</span>
+                Chat de Suporte
+              </CardTitle>
+              <Button 
+                onClick={() => setIsTicketFormOpen(true)}
+                className="min-h-[44px] text-sm md:text-base w-full sm:w-auto"
+              >
+                Abrir Chamado
+              </Button>
+            </div>
+          </CardHeader>
           <CardContent className="flex-1 overflow-hidden p-0 h-[500px] md:h-[600px]">
             {/* Garantir que email seja válido antes de passar para Chatbot */}
             {user.email && user.email.trim() ? (
@@ -259,9 +315,14 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
             name: user.displayName || '',
             email: user.email || '',
             phone: user.phoneNumber || '',
+            orderNumber: ticketOrderContext?.order_number || '',
           }}
+          orderContext={ticketOrderContext || undefined}
           onSubmit={handleTicketCreated}
-          onClose={() => setIsTicketFormOpen(false)}
+          onClose={() => {
+            setIsTicketFormOpen(false);
+            setTicketOrderContext(null);
+          }}
         />
       </DialogContent>
     </Dialog>

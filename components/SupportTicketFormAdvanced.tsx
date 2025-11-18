@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supportService } from '../services/supportService';
-import { TicketSubject, TicketFormConfig, FormField } from '../types';
+import { TicketSubject, TicketFormConfig, FormField, CubboOrder } from '../types';
 import { getTicketFormConfig } from '../data/ticketFormConfigs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -21,6 +21,7 @@ interface SupportTicketFormAdvancedProps {
     phone?: string;
     orderNumber?: string;
   };
+  orderContext?: CubboOrder; // Contexto do pedido para pré-preencher campos
   defaultSubject?: TicketSubject;
   onSubmit: (ticketId: string) => void;
   onClose: () => void;
@@ -36,11 +37,13 @@ const subjectLabels: Record<TicketSubject, string> = {
   produto_errado: 'Produto Errado',
   atraso_entrega: 'Atraso na Entrega',
   duvida_pagamento: 'Dúvida sobre Pagamento',
+  pontos: 'Problema com Pontos',
   outro: 'Outro Assunto',
 };
 
 export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps> = ({
   initialData = { name: '', email: '', phone: '', orderNumber: '' },
+  orderContext,
   defaultSubject,
   onSubmit,
   onClose,
@@ -48,12 +51,50 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
 }) => {
   const [subject, setSubject] = useState<TicketSubject>(defaultSubject || 'outro');
   const [formConfig, setFormConfig] = useState<TicketFormConfig | null>(null);
-  const [formData, setFormData] = useState<Record<string, any>>({
-    name: initialData.name || '',
-    email: initialData.email || '',
-    phone: initialData.phone || '',
-    orderNumber: initialData.orderNumber || '',
-  });
+  
+  // Pré-preencher com dados do pedido se disponível
+  const getInitialFormData = () => {
+    const baseData: Record<string, any> = {
+      name: initialData.name || '',
+      email: initialData.email || '',
+      phone: initialData.phone || '',
+      orderNumber: initialData.orderNumber || orderContext?.order_number || '',
+    };
+    
+    // Se temos contexto do pedido, pré-preencher campos adicionais
+    if (orderContext) {
+      // Pré-preencher número do pedido se não estiver definido
+      if (!baseData.orderNumber && orderContext.order_number) {
+        baseData.orderNumber = orderContext.order_number;
+      }
+      
+      // Pré-preencher endereço se disponível
+      if (orderContext.shipping_address) {
+        const addr = orderContext.shipping_address;
+        baseData.shippingAddress = [
+          addr.street,
+          addr.street_number ? `, ${addr.street_number}` : '',
+          addr.neighborhood ? ` - ${addr.neighborhood}` : '',
+          addr.city ? `, ${addr.city}` : '',
+          addr.state ? ` - ${addr.state}` : '',
+          addr.zip_code ? `, CEP: ${addr.zip_code}` : ''
+        ].filter(Boolean).join('');
+      }
+      
+      // Pré-preencher produtos se disponível
+      if (orderContext.items && orderContext.items.length > 0) {
+        baseData.products = orderContext.items.map(item => 
+          `${item.name || item.sku} (${item.quantity}x)`
+        ).join(', ');
+      } else if (orderContext.items_summary && orderContext.items_summary.length > 0) {
+        baseData.products = orderContext.items_summary.join(', ');
+      }
+    }
+    
+    return baseData;
+  };
+  
+  const [formData, setFormData] = useState<Record<string, any>>(getInitialFormData());
   
   // Garantir que email seja válido
   useEffect(() => {
@@ -89,8 +130,13 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
     }
   }, [defaultSubject]);
 
-  // Buscar preview do pedido quando orderNumber for fornecido (com debounce)
+  // Usar orderContext se disponível, senão buscar preview do pedido quando orderNumber for fornecido
   useEffect(() => {
+    if (orderContext) {
+      setOrderPreview(orderContext);
+      return;
+    }
+    
     if (!formData.orderNumber) {
       setOrderPreview(null);
       return;
@@ -115,7 +161,7 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [formData.orderNumber]);
+  }, [formData.orderNumber, orderContext]);
 
   const handleSubjectChange = (newSubject: string) => {
     console.log('[SupportTicketFormAdvanced] Assunto alterado para:', newSubject);
@@ -230,6 +276,41 @@ export const SupportTicketFormAdvanced: React.FC<SupportTicketFormAdvancedProps>
           descriptionParts.push(`${field.label}: ${displayValue}`);
         }
         });
+      }
+      
+      // Adicionar informações do pedido se disponível
+      if (orderContext) {
+        descriptionParts.push('\n--- Informações do Pedido ---');
+        descriptionParts.push(`Número do Pedido: ${orderContext.order_number}`);
+        descriptionParts.push(`Status: ${orderContext.status}`);
+        
+        if (orderContext.items && orderContext.items.length > 0) {
+          descriptionParts.push('\nProdutos:');
+          orderContext.items.forEach(item => {
+            descriptionParts.push(`- ${item.name || item.sku} (${item.quantity}x)`);
+          });
+        } else if (orderContext.items_summary && orderContext.items_summary.length > 0) {
+          descriptionParts.push(`\nProdutos: ${orderContext.items_summary.join(', ')}`);
+        }
+        
+        if (orderContext.shipping_address) {
+          const addr = orderContext.shipping_address;
+          const addressParts = [
+            addr.street,
+            addr.street_number,
+            addr.neighborhood,
+            addr.city,
+            addr.state,
+            addr.zip_code ? `CEP: ${addr.zip_code}` : ''
+          ].filter(Boolean);
+          if (addressParts.length > 0) {
+            descriptionParts.push(`\nEndereço de Entrega: ${addressParts.join(', ')}`);
+          }
+        }
+        
+        if (orderContext.total_amount !== undefined) {
+          descriptionParts.push(`Valor Total: ${orderContext.currency === 'BRL' ? 'R$' : orderContext.currency || 'R$'} ${typeof orderContext.total_amount === 'number' ? orderContext.total_amount.toFixed(2) : parseFloat(orderContext.total_amount || '0').toFixed(2)}`);
+        }
       }
       
       description = descriptionParts.join('\n\n');
