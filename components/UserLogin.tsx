@@ -12,7 +12,11 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 
-export const UserLogin: React.FC = () => {
+interface UserLoginProps {
+    onBackToHome?: () => void;
+}
+
+export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     
@@ -309,6 +313,20 @@ export const UserLogin: React.FC = () => {
                                         </Button>
                                     </div>
                                 </form>
+                            </div>
+                        )}
+                        
+                        {onBackToHome && (
+                            <div className="text-center pt-4 border-t border-border">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="text-sm"
+                                    disabled={isLoading}
+                                    onClick={onBackToHome}
+                                >
+                                    ← Voltar para página inicial
+                                </Button>
                             </div>
                         )}
                     </CardContent>

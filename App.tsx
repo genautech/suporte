@@ -136,7 +136,7 @@ const App: React.FC = () => {
             case 'managerLogin':
                 return <ManagerLogin onLoginSuccess={handleManagerLoginSuccess} />;
             case 'userLogin':
-                return <UserLogin />;
+                return <UserLogin onBackToHome={() => setView('home')} />;
             case 'home':
             default:
                 return <HomePage 
