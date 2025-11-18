@@ -83,6 +83,8 @@ const App: React.FC = () => {
             setManagerCompanyId(null);
             setAdminViewMode('admin');
             setView('home');
+            // Limpar email salvo do localStorage ao fazer logout
+            localStorage.removeItem('suporte_saved_email');
         }).catch((error) => {
             console.error("Logout Error", error);
         });
@@ -139,11 +141,7 @@ const App: React.FC = () => {
                 return <UserLogin onBackToHome={() => setView('home')} />;
             case 'home':
             default:
-                return <HomePage 
-                    onUserLoginClick={() => setView('userLogin')} 
-                    onAdminLoginClick={() => setView('adminLogin')}
-                    onManagerLoginClick={() => setView('managerLogin')}
-                />;
+                return <HomePage />;
         }
     };
 
