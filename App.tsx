@@ -1,17 +1,19 @@
 // Fix: Implement the main App component to handle views.
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { HomePage } from './components/HomePage';
 import { UserLogin } from './components/UserLogin';
 import { AdminLogin } from './components/AdminLogin';
 import { ManagerLogin } from './components/ManagerLogin';
 import UserDashboard from './components/UserDashboard';
-import AdminDashboard from './components/AdminDashboard';
-import ManagerDashboard from './components/ManagerDashboard';
 import { auth } from './firebase';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { AdminClientView } from './components/AdminClientView';
 import { Toaster } from './components/ui/toaster';
 import { storeContext } from './lib/storeContext';
+import { getManagerCompany, getUserRole } from './services/authService';
+
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const ManagerDashboard = lazy(() => import('./components/ManagerDashboard'));
 
 type AppView = 'home' | 'userLogin' | 'adminLogin' | 'managerLogin';
 type AdminViewMode = 'admin' | 'client';
@@ -49,12 +51,26 @@ const App: React.FC = () => {
             (user) => {
                 clearTimeout(timeoutId);
                 setCurrentUser(user);
-                setIsLoading(false);
+                if (user?.email) {
+                    setIsLoading(true);
+                    resolveUserRole(user.email)
+                        .catch((error) => {
+                            console.error('[App] Erro ao resolver role do usuário:', error);
+                            setIsAdmin(false);
+                            setIsManager(false);
+                            setManagerCompanyId(null);
+                        })
+                        .finally(() => setIsLoading(false));
+                } else {
+                    setIsAdmin(false);
+                    setIsManager(false);
+                    setManagerCompanyId(null);
+                    setIsLoading(false);
+                }
             },
             (error) => {
                 clearTimeout(timeoutId);
                 console.error('[App] Erro ao verificar autenticação:', error);
-                // Continuar mesmo com erro para não bloquear a aplicação
                 setIsLoading(false);
             }
         );
@@ -64,6 +80,30 @@ const App: React.FC = () => {
             unsubscribe();
         };
     }, []); // Array vazio - executar apenas uma vez
+
+    const resolveUserRole = async (email: string) => {
+        const role = await getUserRole(email);
+        if (role === 'admin') {
+            setIsAdmin(true);
+            setIsManager(false);
+            setManagerCompanyId(null);
+        } else if (role === 'manager') {
+            const companyId = await getManagerCompany(email);
+            if (companyId) {
+                setManagerCompanyId(companyId);
+                setIsManager(true);
+            } else {
+                console.warn('[App] Usuário manager sem companyId associado:', email);
+                setIsManager(false);
+                setManagerCompanyId(null);
+            }
+            setIsAdmin(false);
+        } else {
+            setIsAdmin(false);
+            setIsManager(false);
+            setManagerCompanyId(null);
+        }
+    };
 
     const handleAdminLoginSuccess = () => {
         setIsAdmin(true);
@@ -108,27 +148,33 @@ const App: React.FC = () => {
     const renderView = () => {
         if (isManager && managerCompanyId) {
             return (
-                <ManagerDashboard 
-                    companyId={managerCompanyId}
-                    onLogout={handleLogout}
-                />
+                <Suspense fallback={<FullPageLoader message="Carregando painel do gestor..." />}>
+                    <ManagerDashboard 
+                        companyId={managerCompanyId}
+                        onLogout={handleLogout}
+                    />
+                </Suspense>
             );
         }
         if (isAdmin) {
             // Admin pode alternar entre visualização admin e cliente
             if (adminViewMode === 'client') {
                 // Usar componente que carrega os dados da empresa assincronamente
-                return <AdminClientView 
-                    adminSelectedCompanyId={adminSelectedCompanyId}
-                    onLogout={handleLogout}
-                    onSwitchToAdmin={() => handleAdminViewModeChange('admin')}
-                />;
+                return (
+                    <AdminClientView 
+                        adminSelectedCompanyId={adminSelectedCompanyId}
+                        onLogout={handleLogout}
+                        onSwitchToAdmin={() => handleAdminViewModeChange('admin')}
+                    />
+                );
             }
             return (
-                <AdminDashboard 
-                    onLogout={handleLogout}
-                    onSwitchToClient={(companyId) => handleAdminViewModeChange('client', companyId)}
-                />
+                <Suspense fallback={<FullPageLoader message="Carregando painel administrativo..." />}>
+                    <AdminDashboard 
+                        onLogout={handleLogout}
+                        onSwitchToClient={(companyId) => handleAdminViewModeChange('client', companyId)}
+                    />
+                </Suspense>
             );
         }
         if (currentUser) {
@@ -154,5 +200,12 @@ const App: React.FC = () => {
         </div>
     );
 };
+
+const FullPageLoader: React.FC<{ message: string }> = ({ message }) => (
+    <div className="flex flex-col items-center justify-center min-h-screen gap-3 text-muted-foreground">
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+        <p>{message}</p>
+    </div>
+);
 
 export default App;

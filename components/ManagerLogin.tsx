@@ -73,6 +73,7 @@ export const ManagerLogin: React.FC<ManagerLoginProps> = ({ onLoginSuccess }) =>
                 console.log('[ManagerLogin] Login bem-sucedido!');
                 // Login bem-sucedido - onAuthStateChanged no App.tsx vai detectar
                 onLoginSuccess(companyId);
+                setIsLoading(false);
             } catch (authError: any) {
                 console.log('[ManagerLogin] Erro no login:', authError.code, authError.message);
                 
@@ -83,6 +84,7 @@ export const ManagerLogin: React.FC<ManagerLoginProps> = ({ onLoginSuccess }) =>
                         await createUserWithEmailAndPassword(auth, normalizedEmail, password);
                         console.log('[ManagerLogin] Usuário criado com sucesso!');
                         onLoginSuccess(companyId);
+                        setIsLoading(false);
                     } catch (createError: any) {
                         console.error('[ManagerLogin] Erro ao criar usuário:', createError);
                         let errorMessage = 'Erro ao criar usuário gestor.';
