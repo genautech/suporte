@@ -1,5 +1,6 @@
 // Fix: Implement the main App component to handle views.
 import React, { useState, useEffect } from 'react';
+import { HomePage } from './components/HomePage';
 import { UserLogin } from './components/UserLogin';
 import { AdminLogin } from './components/AdminLogin';
 import { ManagerLogin } from './components/ManagerLogin';
@@ -11,11 +12,11 @@ import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { AdminClientView } from './components/AdminClientView';
 import { Toaster } from './components/ui/toaster';
 
-type AppView = 'userLogin' | 'adminLogin' | 'managerLogin';
+type AppView = 'home' | 'userLogin' | 'adminLogin' | 'managerLogin';
 type AdminViewMode = 'admin' | 'client';
 
 const App: React.FC = () => {
-    const [view, setView] = useState<AppView>('userLogin');
+    const [view, setView] = useState<AppView>('home');
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
     const [isManager, setIsManager] = useState(false);
@@ -32,7 +33,7 @@ const App: React.FC = () => {
         } else if (pathname === '/manager') {
             setView('managerLogin');
         } else {
-            setView('userLogin');
+            setView('home');
         }
         
         // Monitor authentication state changes
@@ -81,7 +82,7 @@ const App: React.FC = () => {
             setIsManager(false);
             setManagerCompanyId(null);
             setAdminViewMode('admin');
-            setView('userLogin');
+            setView('home');
         }).catch((error) => {
             console.error("Logout Error", error);
         });
@@ -135,8 +136,14 @@ const App: React.FC = () => {
             case 'managerLogin':
                 return <ManagerLogin onLoginSuccess={handleManagerLoginSuccess} />;
             case 'userLogin':
-            default:
                 return <UserLogin />;
+            case 'home':
+            default:
+                return <HomePage 
+                    onUserLoginClick={() => setView('userLogin')} 
+                    onAdminLoginClick={() => setView('adminLogin')}
+                    onManagerLoginClick={() => setView('managerLogin')}
+                />;
         }
     };
 
