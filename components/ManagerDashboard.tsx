@@ -5,8 +5,6 @@ import { supportService } from '../services/supportService';
 import { companyService } from '../services/companyService';
 import { conversationService } from '../services/conversationService';
 import { userService } from '../services/userService';
-import { AdminFAQ } from './AdminFAQ';
-import { AdminKnowledgeBase } from './AdminKnowledgeBase';
 import { Conversation, MessageSender } from '../types';
 import { LogoutIcon } from './Icons';
 import { Button } from './ui/button';
@@ -14,6 +12,87 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { motion } from 'framer-motion';
+
+// Dynamic component loaders to avoid initialization order issues
+const DynamicAdminFAQ: React.FC<{ companyId?: string }> = ({ companyId }) => {
+    const [Component, setComponent] = useState<React.ComponentType<{ companyId?: string }> | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        import('./AdminFAQ')
+            .then(module => {
+                setComponent(() => module.AdminFAQ);
+                setIsLoading(false);
+            })
+            .catch(error => {
+                console.error('[ManagerDashboard] Erro ao carregar AdminFAQ:', error);
+                setIsLoading(false);
+            });
+    }, []);
+
+    if (isLoading) {
+        return (
+            <Card className="p-12 text-center">
+                <CardContent>
+                    <span className="loading loading-spinner loading-lg text-primary"></span>
+                    <p className="mt-4 text-muted-foreground font-medium">Carregando FAQ...</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    if (!Component) {
+        return (
+            <Card className="p-12 text-center">
+                <CardContent>
+                    <p className="text-muted-foreground">Erro ao carregar FAQ.</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return <Component companyId={companyId} />;
+};
+
+const DynamicAdminKnowledgeBase: React.FC<{ companyId?: string }> = ({ companyId }) => {
+    const [Component, setComponent] = useState<React.ComponentType<{ companyId?: string }> | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        import('./AdminKnowledgeBase')
+            .then(module => {
+                setComponent(() => module.AdminKnowledgeBase);
+                setIsLoading(false);
+            })
+            .catch(error => {
+                console.error('[ManagerDashboard] Erro ao carregar AdminKnowledgeBase:', error);
+                setIsLoading(false);
+            });
+    }, []);
+
+    if (isLoading) {
+        return (
+            <Card className="p-12 text-center">
+                <CardContent>
+                    <span className="loading loading-spinner loading-lg text-primary"></span>
+                    <p className="mt-4 text-muted-foreground font-medium">Carregando Base de Conhecimento...</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    if (!Component) {
+        return (
+            <Card className="p-12 text-center">
+                <CardContent>
+                    <p className="text-muted-foreground">Erro ao carregar Base de Conhecimento.</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return <Component companyId={companyId} />;
+};
 
 type ManagerView = 'tickets' | 'orders' | 'faq' | 'knowledge' | 'interactions' | 'users';
 
@@ -540,9 +619,9 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                     </div>
                 );
             case 'faq':
-                return <AdminFAQ companyId={companyId} />;
+                return <DynamicAdminFAQ companyId={companyId} />;
             case 'knowledge':
-                return <AdminKnowledgeBase companyId={companyId} />;
+                return <DynamicAdminKnowledgeBase companyId={companyId} />;
             case 'interactions':
                 return (
                     <div>
