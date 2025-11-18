@@ -2,14 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { Company } from '../types';
 import { companyService } from '../services/companyService';
-import { grantManagerAccess, revokeManagerAccess } from '../services/authService';
+import { grantManagerAccess, revokeManagerAccess, setManagerPassword } from '../services/authService';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
-import { Trash2, Edit, Plus, Building2 } from 'lucide-react';
+import { Trash2, Edit, Plus, Building2, Eye, EyeOff } from 'lucide-react';
 
 export const AdminCompanies: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -23,8 +23,10 @@ export const AdminCompanies: React.FC = () => {
     greeting: 'Olá! Como posso ajudar?',
     managerEmail: '',
     managerName: '',
+    managerPassword: '',
     managerAccessEnabled: false,
   });
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     loadCompanies();
@@ -51,8 +53,10 @@ export const AdminCompanies: React.FC = () => {
       greeting: 'Olá! Como posso ajudar?',
       managerEmail: '',
       managerName: '',
+      managerPassword: '',
       managerAccessEnabled: false,
     });
+    setShowPassword(false);
     setIsDialogOpen(true);
   };
 
@@ -65,8 +69,10 @@ export const AdminCompanies: React.FC = () => {
       greeting: company.greeting,
       managerEmail: company.managerEmail,
       managerName: company.managerName,
+      managerPassword: '',
       managerAccessEnabled: company.managerAccessEnabled,
     });
+    setShowPassword(false);
     setIsDialogOpen(true);
   };
 
@@ -98,12 +104,28 @@ export const AdminCompanies: React.FC = () => {
         managerAccessEnabled: formData.managerAccessEnabled,
       };
 
+      // Validar senha se acesso está habilitado e email preenchido
+      if (formData.managerAccessEnabled && companyData.managerEmail) {
+        if (formData.managerPassword && formData.managerPassword.length < 6) {
+          alert('A senha deve ter no mínimo 6 caracteres.');
+          return;
+        }
+      }
+
       if (editingCompany?.id) {
         await companyService.updateCompany(editingCompany.id, companyData);
         
         // Atualizar acesso do gestor se necessário
         if (formData.managerAccessEnabled && companyData.managerEmail) {
           await grantManagerAccess(companyData.managerEmail, editingCompany.id);
+          
+          // Definir senha se fornecida
+          if (formData.managerPassword) {
+            const passwordResult = await setManagerPassword(companyData.managerEmail, formData.managerPassword);
+            if (!passwordResult.success) {
+              alert(`Empresa salva, mas erro ao definir senha: ${passwordResult.error}`);
+            }
+          }
         } else if (!formData.managerAccessEnabled && companyData.managerEmail) {
           await revokeManagerAccess(companyData.managerEmail);
         }
@@ -113,9 +135,20 @@ export const AdminCompanies: React.FC = () => {
         // Conceder acesso ao gestor se habilitado
         if (formData.managerAccessEnabled && companyData.managerEmail) {
           await grantManagerAccess(companyData.managerEmail, companyId);
+          
+          // Definir senha se fornecida
+          if (formData.managerPassword) {
+            const passwordResult = await setManagerPassword(companyData.managerEmail, formData.managerPassword);
+            if (!passwordResult.success) {
+              alert(`Empresa criada, mas erro ao definir senha: ${passwordResult.error}`);
+            }
+          }
         }
       }
 
+      // Limpar senha após sucesso
+      setFormData({ ...formData, managerPassword: '' });
+      setShowPassword(false);
       setIsDialogOpen(false);
       loadCompanies();
     } catch (error) {
@@ -221,7 +254,14 @@ export const AdminCompanies: React.FC = () => {
         </Card>
       )}
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) {
+          // Limpar senha ao fechar dialog
+          setFormData({ ...formData, managerPassword: '' });
+          setShowPassword(false);
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -305,6 +345,43 @@ export const AdminCompanies: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, managerEmail: e.target.value })}
                   placeholder="gestor@empresa.com"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="managerPassword">
+                  Senha do Gestor
+                  {formData.managerAccessEnabled && formData.managerEmail && (
+                    <span className="text-xs text-muted-foreground ml-2">(recomendado)</span>
+                  )}
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="managerPassword"
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.managerPassword}
+                    onChange={(e) => setFormData({ ...formData, managerPassword: e.target.value })}
+                    placeholder="Mínimo 6 caracteres"
+                    minLength={6}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {formData.managerAccessEnabled && formData.managerEmail
+                    ? 'Defina uma senha para o gestor fazer login. Deixe em branco para não alterar a senha atual.'
+                    : 'A senha será definida quando o acesso do gestor estiver habilitado.'}
+                </p>
               </div>
 
               <div className="flex items-center space-x-2">

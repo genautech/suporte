@@ -51,28 +51,51 @@ export const companyService = {
       const domain = emailParts[1].split('.')[0]; // pega apenas a parte antes do primeiro ponto
       
       // Buscar empresa por domínio
-      const domainQuery = query(
-        companiesCollection,
-        where('domains', 'array-contains', domain)
-      );
-      const domainSnapshot = await getDocs(domainQuery);
-      
-      if (!domainSnapshot.empty) {
-        return domainSnapshot.docs[0].id;
+      try {
+        const domainQuery = query(
+          companiesCollection,
+          where('domains', 'array-contains', domain)
+        );
+        const domainSnapshot = await getDocs(domainQuery);
+        
+        if (!domainSnapshot.empty) {
+          return domainSnapshot.docs[0].id;
+        }
+      } catch (queryError: any) {
+        // Se falhar ao buscar por domínio (pode ser permissão), apenas logar e continuar
+        const errorCode = queryError?.code || queryError?.message || String(queryError);
+        if (errorCode.includes('permission') || errorCode.includes('Permission')) {
+          console.log('[companyService] Sem permissão para buscar empresa por domínio (pode ser temporário), continuando busca');
+        } else {
+          console.warn('[companyService] Erro ao buscar empresa por domínio:', queryError);
+        }
+        // Continuar para tentar buscar por palavras-chave
       }
       
       // Buscar empresa por palavras-chave no email
-      const allCompanies = await getDocs(companiesCollection);
-      for (const companyDoc of allCompanies.docs) {
-        const company = companyFromFirestore(companyDoc);
-        const emailLower = normalizedEmail.toLowerCase();
-        
-        // Verificar se alguma palavra-chave está no email
-        for (const keyword of company.keywords) {
-          if (emailLower.includes(keyword.toLowerCase())) {
-            return companyDoc.id;
+      // Tentar ler todas as empresas, mas tratar erros de permissão graciosamente
+      try {
+        const allCompanies = await getDocs(companiesCollection);
+        for (const companyDoc of allCompanies.docs) {
+          const company = companyFromFirestore(companyDoc);
+          const emailLower = normalizedEmail.toLowerCase();
+          
+          // Verificar se alguma palavra-chave está no email
+          for (const keyword of company.keywords) {
+            if (emailLower.includes(keyword.toLowerCase())) {
+              return companyDoc.id;
+            }
           }
         }
+      } catch (queryError: any) {
+        // Se falhar ao ler empresas (pode ser permissão ou outro erro), apenas logar e continuar
+        const errorCode = queryError?.code || queryError?.message || String(queryError);
+        if (errorCode.includes('permission') || errorCode.includes('Permission')) {
+          console.log('[companyService] Sem permissão para ler empresas (pode ser temporário), retornando "general"');
+        } else {
+          console.warn('[companyService] Erro ao buscar empresas por palavras-chave:', queryError);
+        }
+        // Continuar e retornar 'general' como fallback
       }
       
       // Não encontrou empresa específica, retornar "general"

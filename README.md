@@ -68,9 +68,14 @@ Use os scripts de deploy que fazem tudo automaticamente, incluindo atualização
 
 # Deploy rápido (usando imagem existente)
 ./deploy-quick.sh
+
+# Deploy totalmente automatizado com validações
+./deploy-auto.sh
 ```
 
-**Ver `SCRIPTS_DEPLOY.md` para mais detalhes sobre os scripts.**
+**📚 Documentação Completa:** Veja [DEPLOY.md](./DEPLOY.md) para guia completo de deploy.
+
+**📋 Scripts:** Veja [SCRIPTS_DEPLOY.md](./SCRIPTS_DEPLOY.md) para mais detalhes sobre os scripts.
 
 ### Método Manual
 

@@ -41,70 +41,135 @@ export const userService = {
   recordLogin: async (email: string, additionalData?: { firstName?: string; lastName?: string; phone?: string }): Promise<SupportUser> => {
     try {
       const normalizedEmail = email.toLowerCase().trim();
-      
-      // Verificar se usuário já existe
       const userRef = doc(db, 'supportUsers', normalizedEmail);
-      const userDoc = await getDoc(userRef);
       
-      const now = Date.now();
-      
-      if (userDoc.exists()) {
-        // Atualizar usuário existente
-        const existingData = userDoc.data();
-        await updateDoc(userRef, {
-          lastAccessAt: serverTimestamp(),
-          totalLogins: (existingData.totalLogins || 0) + 1,
-          ...(additionalData?.firstName && { firstName: additionalData.firstName }),
-          ...(additionalData?.lastName && { lastName: additionalData.lastName }),
-          ...(additionalData?.phone && { phone: additionalData.phone }),
-          updatedAt: serverTimestamp(),
-        });
-        
-        // Atualizar companyId se ainda não foi atribuído manualmente
-        if (!existingData.assignedCompanyId) {
-          try {
-            const autoDetectedCompanyId = await companyService.getCompanyFromEmail(normalizedEmail);
-            if (autoDetectedCompanyId && autoDetectedCompanyId !== 'general') {
-              await updateDoc(userRef, {
-                autoDetectedCompanyId,
-                updatedAt: serverTimestamp(),
-              });
-            }
-          } catch (error) {
-            console.error('[userService] Erro ao detectar empresa:', error);
-          }
+      // Tentar ler documento existente (pode falhar se não existir ou se não tiver permissão, mas não é crítico)
+      let userDoc;
+      let existingData: any = null;
+      try {
+        userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          existingData = userDoc.data();
         }
-        
-        const updatedDoc = await getDoc(userRef);
-        return supportUserFromFirestore(updatedDoc);
-      } else {
-        // Criar novo usuário
-        let autoDetectedCompanyId: string | undefined;
+      } catch (readError: any) {
+        // Se falhar ao ler (pode ser permissão ou documento não existe), continuar como se não existisse
+        const errorCode = readError?.code || readError?.message || String(readError);
+        if (errorCode.includes('permission') || errorCode.includes('Permission')) {
+          console.log('[userService] Sem permissão para ler documento (normal para novo usuário), criando novo');
+        } else {
+          console.log('[userService] Não foi possível ler documento existente, criando novo:', readError);
+        }
+      }
+      
+      const isNewUser = !existingData;
+      
+      // Detectar empresa do usuário (se ainda não foi atribuída manualmente)
+      let autoDetectedCompanyId: string | undefined;
+      if (isNewUser || !existingData?.assignedCompanyId) {
         try {
           autoDetectedCompanyId = await companyService.getCompanyFromEmail(normalizedEmail);
         } catch (error) {
           console.error('[userService] Erro ao detectar empresa:', error);
         }
+      }
+      
+      // Preparar dados para atualização/criação
+      const updateData: any = {
+        email: normalizedEmail,
+        lastAccessAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      
+      if (isNewUser) {
+        // Criar novo usuário
+        updateData.firstAccessAt = serverTimestamp();
+        updateData.totalLogins = 1;
+        updateData.totalConversations = 0;
+        updateData.totalTickets = 0;
+        updateData.createdAt = serverTimestamp();
         
-        const newUserData = {
+        if (additionalData?.firstName) updateData.firstName = additionalData.firstName;
+        if (additionalData?.lastName) updateData.lastName = additionalData.lastName;
+        if (additionalData?.phone) updateData.phone = additionalData.phone;
+        if (autoDetectedCompanyId) updateData.autoDetectedCompanyId = autoDetectedCompanyId;
+      } else {
+        // Atualizar usuário existente
+        updateData.totalLogins = (existingData.totalLogins || 0) + 1;
+        
+        // Atualizar campos apenas se fornecidos e diferentes
+        if (additionalData?.firstName !== undefined) updateData.firstName = additionalData.firstName;
+        if (additionalData?.lastName !== undefined) updateData.lastName = additionalData.lastName;
+        if (additionalData?.phone !== undefined) updateData.phone = additionalData.phone;
+        
+        // Atualizar companyId apenas se ainda não foi atribuído manualmente
+        if (!existingData.assignedCompanyId && autoDetectedCompanyId) {
+          updateData.autoDetectedCompanyId = autoDetectedCompanyId;
+        }
+      }
+      
+      // Usar setDoc com merge para criar ou atualizar sem precisar ler primeiro
+      try {
+        await setDoc(userRef, updateData, { merge: true });
+      } catch (setDocError: any) {
+        // Se falhar com merge, tentar criar sem merge (pode ser que o documento não exista)
+        const errorCode = setDocError?.code || setDocError?.message || String(setDocError);
+        if (errorCode.includes('permission') || errorCode.includes('Permission')) {
+          console.warn('[userService] Erro de permissão ao fazer setDoc com merge, tentando criar sem merge:', setDocError);
+          // Tentar criar sem merge (apenas para novos usuários)
+          if (isNewUser) {
+            await setDoc(userRef, updateData);
+          } else {
+            throw setDocError; // Se não for novo usuário, lançar erro
+          }
+        } else {
+          throw setDocError; // Outros erros, lançar
+        }
+      }
+      
+      // Tentar ler documento atualizado para retornar (pode falhar se não tiver permissão)
+      try {
+        const finalDoc = await getDoc(userRef);
+        if (finalDoc.exists()) {
+          return supportUserFromFirestore(finalDoc);
+        }
+      } catch (readError: any) {
+        // Se não conseguir ler, retornar dados baseados no que tentamos salvar
+        console.log('[userService] Não foi possível ler documento após salvar (pode ser problema de permissão temporário), retornando dados estimados');
+        return {
+          id: normalizedEmail,
           email: normalizedEmail,
           firstName: additionalData?.firstName || '',
           lastName: additionalData?.lastName || '',
           phone: additionalData?.phone || '',
-          firstAccessAt: serverTimestamp(),
-          lastAccessAt: serverTimestamp(),
-          totalLogins: 1,
-          totalConversations: 0,
-          totalTickets: 0,
-          autoDetectedCompanyId: autoDetectedCompanyId || undefined,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-        
-        await setDoc(userRef, newUserData);
-        const createdDoc = await getDoc(userRef);
-        return supportUserFromFirestore(createdDoc);
+          firstAccessAt: isNewUser ? Date.now() : (existingData?.firstAccessAt || Date.now()),
+          lastAccessAt: Date.now(),
+          totalLogins: isNewUser ? 1 : ((existingData?.totalLogins || 0) + 1),
+          totalConversations: existingData?.totalConversations || 0,
+          totalTickets: existingData?.totalTickets || 0,
+          autoDetectedCompanyId: autoDetectedCompanyId,
+          assignedCompanyId: existingData?.assignedCompanyId,
+          createdAt: isNewUser ? Date.now() : (existingData?.createdAt || Date.now()),
+          updatedAt: Date.now(),
+        } as SupportUser;
       }
+      
+      // Se chegou aqui, documento não existe após setDoc (muito raro)
+      console.warn('[userService] Documento não existe após setDoc, retornando dados estimados');
+      return {
+        id: normalizedEmail,
+        email: normalizedEmail,
+        firstName: additionalData?.firstName || '',
+        lastName: additionalData?.lastName || '',
+        phone: additionalData?.phone || '',
+        firstAccessAt: Date.now(),
+        lastAccessAt: Date.now(),
+        totalLogins: 1,
+        totalConversations: 0,
+        totalTickets: 0,
+        autoDetectedCompanyId: autoDetectedCompanyId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as SupportUser;
     } catch (error) {
       console.error('[userService] Erro ao registrar login:', error);
       throw error;

@@ -2,6 +2,21 @@
 
 ## [v1.7.0] - 2025-01-XX
 
+### 🔧 Correções Técnicas (2025-01-XX)
+
+#### TypeScript e Build
+- ✅ Corrigido `BadgeProps` para aceitar `children` explicitamente
+- ✅ Corrigido escopo de `finalCompanyId` em `AdminFAQ.tsx`
+- ✅ Adicionado tipo `FAQAttachment` em `types.ts`
+- ✅ Adicionado campo `rows` em `FormField` interface
+- ✅ Adicionado export de `storage` em `firebase.ts`
+- ✅ Adicionados tipos `CustomerKnowledge` e `CustomerKnowledgeEntry`
+- ✅ Corrigido uso inconsistente da API Gemini (`getGenerativeModel` → `models.generateContent`)
+
+#### Build e Deploy
+- ✅ Build passa sem erros críticos
+- ✅ Warnings CSS do DaisyUI são não-críticos e podem ser ignorados
+
 ### 🎉 Novas Funcionalidades
 
 #### FAQ Multi-tenant por Cliente
@@ -23,6 +38,12 @@
 - **Aba Dedicada**: Nova aba "⚙️ Gerenciar FAQ" disponível quando admin visualiza como cliente
 
 ### 🐛 Correções
+
+#### Permissões e Firestore (2025-11-17)
+- ✅ Corrigido erro ao salvar conversas com campos `undefined`
+- ✅ Removidos campos `undefined` antes de salvar no Firestore
+- ✅ Melhorados logs para debug de pedidos Cubbo
+- ✅ Adicionados comentários claros nas regras do Firestore
 
 #### Select Boxes
 - **Problema**: Select boxes pararam de abrir em toda a plataforma

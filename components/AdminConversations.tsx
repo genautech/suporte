@@ -20,6 +20,10 @@ import { Label } from './ui/label';
 import { MessageSender } from '../types';
 import { SupportTicketFormAdvanced } from './SupportTicketFormAdvanced';
 import { supportService } from '../services/supportService';
+import { Input } from './ui/input';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { MessageIcon } from './Icons';
 
 type FilterType = 'all' | 'undefined' | 'company';
 type ViewType = 'conversations' | 'users';
@@ -38,6 +42,9 @@ export const AdminConversations: React.FC = () => {
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [ticketInitialData, setTicketInitialData] = useState<{ name: string; email: string; phone?: string; orderNumber?: string } | null>(null);
   const [ticketDefaultSubject, setTicketDefaultSubject] = useState<any>('outro');
+  const [adminMessage, setAdminMessage] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
   
   // Estatísticas
   const [userStats, setUserStats] = useState({
@@ -242,8 +249,98 @@ export const AdminConversations: React.FC = () => {
     }
   };
 
+  const handleSendAdminMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminMessage.trim() || !selectedConversation?.id || isSendingMessage) return;
+
+    setIsSendingMessage(true);
+    try {
+      await conversationService.addAdminMessage(selectedConversation.id, adminMessage.trim());
+      setAdminMessage('');
+      // A atualização em tempo real vai atualizar automaticamente via onSnapshot
+    } catch (error) {
+      console.error('[AdminConversations] Erro ao enviar mensagem:', error);
+      alert('Erro ao enviar mensagem. Tente novamente.');
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  // Scroll automático para o final das mensagens
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Atualização em tempo real da conversa selecionada
+  useEffect(() => {
+    if (!selectedConversation?.id || !isDetailModalOpen) return;
+
+    const conversationRef = doc(db, 'conversations', selectedConversation.id);
+    const unsubscribe = onSnapshot(conversationRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const updatedData = snapshot.data();
+        const updatedConversation: Conversation = {
+          ...selectedConversation,
+          ...updatedData,
+          id: snapshot.id,
+          createdAt: (updatedData.createdAt as any)?.toDate?.()?.getTime() || selectedConversation.createdAt,
+          updatedAt: (updatedData.updatedAt as any)?.toDate?.()?.getTime() || selectedConversation.updatedAt,
+        };
+        setSelectedConversation(updatedConversation);
+        // Atualizar também na lista de conversas
+        setConversations(prev => 
+          prev.map(conv => conv.id === updatedConversation.id ? updatedConversation : conv)
+        );
+        // Scroll para o final após atualização
+        setTimeout(scrollToBottom, 100);
+      }
+    }, (error) => {
+      console.error('[AdminConversations] Erro ao escutar atualizações:', error);
+    });
+
+    return () => unsubscribe();
+  }, [selectedConversation?.id, isDetailModalOpen]);
+
+  // Scroll quando mensagens mudarem
+  useEffect(() => {
+    if (isDetailModalOpen && selectedConversation) {
+      setTimeout(scrollToBottom, 100);
+    }
+  }, [selectedConversation?.messages, isDetailModalOpen]);
+
+  // Calcular conversas abertas (não resolvidas)
+  const openConversations = conversations.filter(conv => !conv.resolved).length;
+
   return (
     <div className="space-y-6">
+      {/* Notificação de Conversas Abertas */}
+      {openConversations > 0 && (
+        <Card className="border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-yellow-400 flex items-center justify-center shadow-md">
+                  <MessageIcon className="w-6 h-6 text-yellow-900" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg text-yellow-900 dark:text-yellow-100">
+                    {openConversations} {openConversations === 1 ? 'Conversa Aberta' : 'Conversas Abertas'}
+                  </h3>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                    {openConversations === 1 
+                      ? 'Há uma conversa aguardando interação' 
+                      : 'Há conversas aguardando interação'}
+                  </p>
+                </div>
+              </div>
+              <Badge variant="warning" className="text-lg px-4 py-2 font-bold">
+                {openConversations}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Cards de Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -392,9 +489,12 @@ export const AdminConversations: React.FC = () => {
                             <Button
                               onClick={() => handleViewConversation(conv)}
                               size="sm"
-                              variant="outline"
+                              variant="default"
+                              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-md hover:shadow-lg transition-all min-w-[100px]"
+                              title="Abrir chat para interação em tempo real"
                             >
-                              Ver
+                              <MessageIcon className="w-4 h-4 mr-1.5" />
+                              Chat
                             </Button>
                             {((!conv.companyId || conv.companyId === 'general') && !conv.assignedCompanyId) && (
                               <Button
@@ -507,16 +607,16 @@ export const AdminConversations: React.FC = () => {
       {/* Modal de Detalhes da Conversa */}
       {selectedConversation && isDetailModalOpen && (
         <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
-          <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
             <DialogHeader>
-              <DialogTitle>Detalhes da Conversa</DialogTitle>
+              <DialogTitle>Live Chat - Detalhes da Conversa</DialogTitle>
               <DialogDescription>
                 Usuário: {selectedConversation.userId} | 
                 Criada em: {new Date(selectedConversation.createdAt).toLocaleString('pt-BR')}
               </DialogDescription>
             </DialogHeader>
             
-            <div className="space-y-4">
+            <div className="flex flex-col flex-1 space-y-4 min-h-0">
               {/* Informações da Conversa */}
               <div className="flex gap-2 flex-wrap">
                 <Badge variant={selectedConversation.resolved ? 'success' : 'warning'}>
@@ -532,32 +632,70 @@ export const AdminConversations: React.FC = () => {
                 )}
               </div>
 
-              {/* Mensagens */}
-              <div className="space-y-2">
+              {/* Área de Mensagens - Chat */}
+              <div className="flex flex-col flex-1 min-h-0 space-y-2">
                 <h3 className="font-semibold">Mensagens ({selectedConversation.messages.length})</h3>
-                <div className="border rounded-lg p-4 space-y-3 max-h-96 overflow-y-auto">
-                  {selectedConversation.messages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-3 rounded-lg ${
-                        msg.sender === MessageSender.USER
-                          ? 'bg-primary/10 ml-8'
-                          : 'bg-muted mr-8'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-sm">
-                          {msg.sender === MessageSender.USER ? '👤 Usuário' : '🤖 Bot'}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(msg.timestamp).toLocaleString('pt-BR')}
-                        </span>
+                <div className="border rounded-lg p-4 space-y-3 flex-1 overflow-y-auto bg-muted/20">
+                  {selectedConversation.messages.map((msg, idx) => {
+                    const isUser = msg.sender === MessageSender.USER;
+                    const isAdmin = msg.sender === MessageSender.ADMIN;
+                    const isBot = msg.sender === MessageSender.BOT;
+                    
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-3 rounded-lg ${
+                          isUser
+                            ? 'bg-primary/10 ml-8 border-l-4 border-primary'
+                            : isAdmin
+                            ? 'bg-blue-500/10 mr-8 border-l-4 border-blue-500'
+                            : 'bg-muted mr-8 border-l-4 border-gray-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`font-semibold text-sm ${
+                            isAdmin ? 'text-blue-600' : isUser ? 'text-primary' : 'text-muted-foreground'
+                          }`}>
+                            {isUser ? '👤 Usuário' : isAdmin ? '👨‍💼 Admin' : '🤖 Bot'}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(msg.timestamp).toLocaleString('pt-BR')}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                       </div>
-                      <p className="text-sm">{msg.text}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
                 </div>
               </div>
+
+              {/* Input de Mensagem do Admin */}
+              <form onSubmit={handleSendAdminMessage} className="flex gap-2 pt-2 border-t">
+                <Input
+                  value={adminMessage}
+                  onChange={(e) => setAdminMessage(e.target.value)}
+                  placeholder="Digite sua mensagem..."
+                  disabled={isSendingMessage}
+                  className="flex-1"
+                />
+                <Button
+                  type="submit"
+                  disabled={!adminMessage.trim() || isSendingMessage}
+                >
+                  {isSendingMessage ? (
+                    <>
+                      <span className="loading loading-spinner loading-sm mr-2"></span>
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <span className="mr-2">📤</span>
+                      Enviar
+                    </>
+                  )}
+                </Button>
+              </form>
 
               {/* AI Insights */}
               {selectedConversation.aiInsights && (

@@ -25,9 +25,10 @@ interface UserDashboardProps {
   adminMode?: boolean;
   onSwitchToAdmin?: () => void;
   adminSelectedCompanyId?: string; // CompanyId selecionado pelo admin para visualização
+  realClientEmail?: string; // Email real do cliente (quando admin está visualizando)
 }
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode = false, onSwitchToAdmin, adminSelectedCompanyId }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode = false, onSwitchToAdmin, adminSelectedCompanyId, realClientEmail }) => {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [orders, setOrders] = useState<CubboOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -39,36 +40,45 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
   const [companyName, setCompanyName] = useState<string>('Suporte Yoobe');
 
   const loadData = useCallback(async () => {
-    if (user?.email || user?.phoneNumber) {
+    // Usar email real se fornecido (modo admin visualizando cliente), senão usar email do user
+    const emailToUse = realClientEmail || user?.email;
+    const phoneToUse = user?.phoneNumber;
+    
+    if (emailToUse || phoneToUse) {
       setIsLoading(true);
       const userTickets = await supportService.getTicketsByUser({
-        email: user.email,
-        phone: user.phoneNumber,
+        email: emailToUse,
+        phone: phoneToUse,
       });
       const userOrders = await supportService.findOrdersByCustomer({
-        email: user.email,
-        phone: user.phoneNumber
+        email: emailToUse,
+        phone: phoneToUse
       });
       setTickets(userTickets);
       setOrders(userOrders);
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, realClientEmail]);
 
   useEffect(() => {
     // Atualizar profileUser quando user mudar
     setProfileUser(user);
     
-    if (!user.displayName || !user.email) {
+    // Abrir modal apenas se não tiver email (não se faltar apenas nome/sobrenome)
+    if (!user.email) {
       setIsProfileModalOpen(true);
     }
     loadData();
     
-    // Registrar login do usuário
+    // Registrar login do usuário (nome e sobrenome são opcionais)
     if (user.email) {
+      const nameParts = user.displayName?.split(' ') || [];
+      const firstName = nameParts[0]?.trim() || undefined;
+      const lastName = nameParts.slice(1).join(' ').trim() || undefined;
+      
       userService.recordLogin(user.email, {
-        firstName: user.displayName?.split(' ')[0],
-        lastName: user.displayName?.split(' ').slice(1).join(' '),
+        firstName: firstName,
+        lastName: lastName,
         phone: user.phoneNumber || undefined,
       }).catch(error => {
         console.error('[UserDashboard] Erro ao registrar login:', error);
@@ -178,7 +188,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
             transition={{ delay: 0.1 }}
           >
             <h1 className="text-4xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent mb-2">
-              Bem-vindo(a), {profileUser.displayName || 'Cliente'}!
+              Bem-vindo(a), {profileUser.displayName || profileUser.email || 'Cliente'}!
             </h1>
             <p className="text-muted-foreground text-lg">
               {adminMode ? 'Visualização como Cliente' : 'Central de Suporte Completa'}

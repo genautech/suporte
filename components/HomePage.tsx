@@ -6,9 +6,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 interface HomePageProps {
     onUserLoginClick: () => void;
     onAdminLoginClick: () => void;
+    onManagerLoginClick?: () => void;
 }
 
-export const HomePage: React.FC<HomePageProps> = ({ onUserLoginClick, onAdminLoginClick }) => {
+export const HomePage: React.FC<HomePageProps> = ({ onUserLoginClick, onAdminLoginClick, onManagerLoginClick }) => {
     return (
         <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10 flex items-center justify-center p-4">
             <motion.div
@@ -57,6 +58,28 @@ export const HomePage: React.FC<HomePageProps> = ({ onUserLoginClick, onAdminLog
                         >
                             Acesso Administrativo
                         </Button>
+                        
+                        {onManagerLoginClick && (
+                            <>
+                                <div className="relative py-4">
+                                    <div className="absolute inset-0 flex items-center">
+                                        <div className="w-full border-t border-border"></div>
+                                    </div>
+                                    <div className="relative flex justify-center text-sm">
+                                        <span className="px-2 bg-background text-muted-foreground">ou</span>
+                                    </div>
+                                </div>
+                                
+                                <Button 
+                                    onClick={onManagerLoginClick} 
+                                    variant="outline"
+                                    className="w-full"
+                                >
+                                    <span className="text-lg mr-2">🏢</span>
+                                    Acesso de Gestor
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </CardContent>
                 

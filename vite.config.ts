@@ -6,8 +6,9 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
     return {
       server: {
-        port: 3000,
+        port: 8080,
         host: '0.0.0.0',
+        strictPort: false, // Se 8080 estiver ocupada, tenta próxima porta disponível
       },
       plugins: [react()],
       // Vite expõe variáveis de ambiente automaticamente com prefixo VITE_

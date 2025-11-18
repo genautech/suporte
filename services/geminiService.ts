@@ -923,9 +923,10 @@ Forneça uma análise JSON com os seguintes campos:
 
 Responda APENAS com o JSON, sem texto adicional.`;
 
-        const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-        const result = await model.generateContent(prompt);
-        const response = result.response;
+        const response = await ai.models.generateContent({
+            model: "gemini-2.0-flash-exp",
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        });
         const text = response.text();
 
         // Tentar extrair JSON da resposta

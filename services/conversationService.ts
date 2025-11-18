@@ -14,7 +14,7 @@ import {
   Timestamp,
   serverTimestamp,
 } from 'firebase/firestore';
-import { Conversation, ConversationMessage } from '../types';
+import { Conversation, ConversationMessage, MessageSender } from '../types';
 import { companyService } from './companyService';
 
 const conversationsCollection = collection(db, 'conversations');
@@ -55,7 +55,8 @@ export const conversationService = {
         }
       }
       
-      const conversationData = {
+      // Preparar dados da conversa, removendo campos undefined (Firestore não aceita undefined)
+      const conversationData: any = {
         userId,
         sessionId,
         messages,
@@ -63,12 +64,12 @@ export const conversationService = {
         resolved: false,
         attempts: 0,
         companyId: companyId || 'general', // Adicionar companyId
-        assignedCompanyId: undefined, // Será atribuído manualmente se necessário
-        supportUserId: undefined, // Será vinculado ao SupportUser se existir
-        aiInsights: undefined, // Será preenchido pela análise do Gemini
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
+      
+      // Adicionar campos opcionais apenas se tiverem valor (não undefined)
+      // assignedCompanyId, supportUserId e aiInsights serão adicionados depois se necessário
 
       const docRef = await addDoc(conversationsCollection, conversationData);
       return docRef.id;
@@ -91,6 +92,43 @@ export const conversationService = {
       });
     } catch (error) {
       console.error('[conversationService] Erro ao atualizar conversa:', error);
+      throw error;
+    }
+  },
+
+  // Adicionar mensagem do admin à conversa
+  addAdminMessage: async (
+    conversationId: string,
+    messageText: string
+  ): Promise<void> => {
+    try {
+      const conversationRef = doc(conversationsCollection, conversationId);
+      const conversationDoc = await getDoc(conversationRef);
+      
+      if (!conversationDoc.exists()) {
+        throw new Error('Conversa não encontrada');
+      }
+      
+      const conversationData = conversationDoc.data();
+      const currentMessages = conversationData.messages || [];
+      
+      // Criar nova mensagem do admin
+      const adminMessage: ConversationMessage = {
+        text: messageText,
+        sender: MessageSender.ADMIN,
+        timestamp: Date.now(),
+      };
+      
+      // Adicionar mensagem ao array
+      const updatedMessages = [...currentMessages, adminMessage];
+      
+      // Atualizar conversa
+      await updateDoc(conversationRef, {
+        messages: updatedMessages,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('[conversationService] Erro ao adicionar mensagem do admin:', error);
       throw error;
     }
   },

@@ -73,7 +73,8 @@ app.get('/', (req, res) => {
     status: 'online',
     version: '1.0.0',
     endpoints: {
-      'POST /reset-password': 'Reset user password using auth code'
+      'POST /reset-password': 'Reset user password using auth code',
+      'POST /admin/set-password': 'Set user password directly (admin only, no code required)'
     }
   });
 });
@@ -195,10 +196,97 @@ app.post('/reset-password', async (req, res) => {
   }
 });
 
+/**
+ * POST /admin/set-password
+ * Sets user password directly without requiring auth code (admin only)
+ * 
+ * Body:
+ * {
+ *   email: string,
+ *   password: string (minimum 6 characters)
+ * }
+ */
+app.post('/admin/set-password', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ 
+        error: 'Email e senha são obrigatórios.' 
+      });
+    }
+
+    // Validate password length
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        error: 'A senha deve ter no mínimo 6 caracteres.' 
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    try {
+      // Try to get user by email
+      const userRecord = await admin.auth().getUserByEmail(normalizedEmail);
+      
+      // User exists, update password
+      await admin.auth().updateUser(userRecord.uid, {
+        password: password
+      });
+
+      console.log(`[ADMIN SET PASSWORD] Password updated for: ${normalizedEmail}`);
+      
+      return res.status(200).json({ 
+        success: true,
+        message: 'Senha definida com sucesso.' 
+      });
+    } catch (authError) {
+      console.error('[ADMIN SET PASSWORD] Error setting password:', authError);
+      
+      if (authError.code === 'auth/user-not-found') {
+        // User doesn't exist, create it
+        try {
+          await admin.auth().createUser({
+            email: normalizedEmail,
+            password: password,
+            emailVerified: false
+          });
+          
+          console.log(`[ADMIN SET PASSWORD] User created: ${normalizedEmail}`);
+          
+          return res.status(200).json({ 
+            success: true,
+            message: 'Usuário criado com senha definida com sucesso.' 
+          });
+        } catch (createError) {
+          console.error('[ADMIN SET PASSWORD] Error creating user:', createError);
+          return res.status(500).json({ 
+            error: 'Erro ao criar usuário.',
+            details: createError.message 
+          });
+        }
+      } else {
+        return res.status(500).json({ 
+          error: 'Erro ao definir senha.',
+          details: authError.message 
+        });
+      }
+    }
+  } catch (error) {
+    console.error('[ADMIN SET PASSWORD] Unexpected error:', error);
+    return res.status(500).json({ 
+      error: 'Erro interno do servidor.',
+      details: error.message 
+    });
+  }
+});
+
 const port = process.env.PORT || 8081; // Cloud Run usa PORT, local usa 8081
 app.listen(port, () => {
   console.log(`🔥 Firebase Auth Reset Service rodando na porta ${port}`);
-  console.log(`📡 Endpoint: http://localhost:${port}/reset-password`);
+  console.log(`📡 Endpoints:`);
+  console.log(`   - POST http://localhost:${port}/reset-password`);
+  console.log(`   - POST http://localhost:${port}/admin/set-password`);
   console.log(`🌐 CORS habilitado para todas as origens`);
 });
 

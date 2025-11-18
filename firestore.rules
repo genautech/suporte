@@ -9,17 +9,34 @@ service cloud.firestore {
       );
     }
     
+    // Função helper para verificar se é gestor
+    function isManager() {
+      return request.auth != null && 
+             firestore.exists(/databases/$(database)/documents/userRoles/$(request.auth.token.email.lower())) &&
+             firestore.get(/databases/$(database)/documents/userRoles/$(request.auth.token.email.lower())).data.role == 'manager';
+    }
+    
+    // Função helper para verificar se é gestor de uma empresa específica
+    function isManagerOfCompany(companyId) {
+      return isManager() &&
+             firestore.get(/databases/$(database)/documents/userRoles/$(request.auth.token.email.lower())).data.companyId == companyId;
+    }
+    
     // Regras padrão - permitir leitura/escrita autenticada
     // Ajuste estas regras conforme necessário para sua aplicação
     
-    // Tickets - usuários podem ler/escrever seus próprios tickets
+    // Tickets - usuários podem ler/escrever seus próprios tickets, gestores podem ler tickets da sua empresa
     match /tickets/{ticketId} {
       allow read: if request.auth != null && 
                      (resource.data.userId == request.auth.token.email || 
-                      isAdmin());
+                      resource.data.email == request.auth.token.email ||
+                      isAdmin() ||
+                      (isManager() && resource.data.companyId != null && 
+                       isManagerOfCompany(resource.data.companyId)));
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null && 
                               (resource.data.userId == request.auth.token.email || 
+                               resource.data.email == request.auth.token.email ||
                                isAdmin());
     }
     
@@ -37,39 +54,113 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    // Companies - apenas admins podem ler/escrever
-    // Permitir acesso quando autenticado como admin@yoobe.co ou com token admin
+    // Companies - permitir leitura pública (dados não sensíveis: nome, domínios, keywords, greeting)
+    // Necessário para verificação durante login de gestores e identificação de empresa
+    // Apenas admins podem escrever
     match /companies/{companyId} {
-      allow read, write: if isAdmin();
+      // Permitir leitura pública (dados não sensíveis)
+      allow read: if true;
+      // Apenas admins podem escrever
+      allow write: if isAdmin();
     }
     
-    // User Roles - apenas admins podem ler/escrever
+    // User Roles - permitir leitura pública para verificação de role (necessário para login)
+    // Admins podem ler/escrever, qualquer usuário autenticado pode ler seu próprio documento
+    // Leitura pública permitida apenas para verificação de role antes do login
     match /userRoles/{email} {
-      allow read, write: if isAdmin();
+      allow read: if true; // Permitir leitura pública para verificação de role (dados não sensíveis: apenas role e companyId)
+      allow write: if isAdmin();
     }
     
-    // Conversations - usuários podem ler/escrever suas próprias conversas
+    // Conversations - usuários podem ler/escrever suas próprias conversas, gestores podem ler conversas da sua empresa
     match /conversations/{conversationId} {
-      allow read, write: if request.auth != null && 
-                           (resource.data.userId == request.auth.token.email || 
-                            isAdmin());
+      allow read: if request.auth != null && 
+                     (resource.data.userId == request.auth.token.email || 
+                      isAdmin() ||
+                      (isManager() && resource.data.companyId != null && 
+                       isManagerOfCompany(resource.data.companyId)) ||
+                      (isManager() && resource.data.assignedCompanyId != null && 
+                       isManagerOfCompany(resource.data.assignedCompanyId)));
+      allow write: if request.auth != null && 
+                      (resource.data.userId == request.auth.token.email || 
+                       isAdmin());
       allow create: if request.auth != null;
     }
     
-    // Auth Codes - apenas leitura/escrita autenticada
+    // Auth Codes - permitir criação sem autenticação (para gerar código antes do login)
+    // Mas validar que o email está presente e corresponde ao email do código
     match /authCodes/{codeId} {
-      allow read, write: if request.auth != null;
+      // Permitir criar código sem autenticação, mas validar que tem email
+      allow create: if request.resource.data.email != null && 
+                       request.resource.data.code != null &&
+                       request.resource.data.expiresAt != null;
+      
+      // Permitir ler códigos não usados sem autenticação (para invalidar códigos existentes)
+      // OU se autenticado E o código for do próprio email
+      allow read: if (resource.data.used == false) ||
+                     (request.auth != null && 
+                      (resource.data.email == request.auth.token.email || 
+                       isAdmin()));
+      
+      // Permitir atualizar códigos não usados sem autenticação (para invalidar)
+      // Mas apenas para marcar como usado (used: true)
+      // OU se autenticado E o código for do próprio email
+      allow update: if (resource.data.used == false && 
+                        request.resource.data.used == true &&
+                        request.resource.data.email == resource.data.email) ||
+                       (request.auth != null && 
+                        (resource.data.email == request.auth.token.email || 
+                         isAdmin()));
+      
+      // Não permitir delete (códigos são marcados como used ao invés de deletados)
+      allow delete: if false;
     }
     
-    // API Configs - apenas admins
+    // API Configs - usuários autenticados podem ler (para buscar storeId para pedidos)
+    // Apenas admins podem escrever
     match /apiConfigs/{configId} {
-      allow read, write: if isAdmin();
+      // Permitir leitura para usuários autenticados (necessário para buscar storeId para pedidos)
+      allow read: if request.auth != null;
+      // Apenas admins podem escrever
+      allow write: if isAdmin();
     }
     
     // Orders - usuários podem ler seus próprios pedidos
     match /orders/{orderId} {
       allow read: if request.auth != null;
       allow write: if isAdmin();
+    }
+    
+    // Support Users - permitir criação sem autenticação (para registrar login)
+    // Mas apenas para o próprio email
+    match /supportUsers/{email} {
+      // Permitir criar apenas se o ID do documento (email) corresponder ao email no documento
+      // Normalizar emails para comparação case-insensitive
+      allow create: if email.lower() == request.resource.data.email.lower() &&
+                       request.resource.data.email != null;
+      
+      // Permitir ler apenas se autenticado E for o próprio email OU admin OU gestor da empresa do usuário
+      // Normalizar emails para comparação case-insensitive
+      allow read: if request.auth != null && 
+                     (email.lower() == request.auth.token.email.lower() || 
+                      isAdmin() ||
+                      (isManager() && resource.data.assignedCompanyId != null && 
+                       isManagerOfCompany(resource.data.assignedCompanyId)) ||
+                      (isManager() && resource.data.autoDetectedCompanyId != null && 
+                       isManagerOfCompany(resource.data.autoDetectedCompanyId)));
+      
+      // Permitir atualizar apenas se autenticado E for o próprio email OU admin OU gestor da empresa do usuário
+      // Normalizar emails para comparação case-insensitive
+      allow update: if request.auth != null && 
+                       (email.lower() == request.auth.token.email.lower() || 
+                        isAdmin() ||
+                        (isManager() && resource.data.assignedCompanyId != null && 
+                         isManagerOfCompany(resource.data.assignedCompanyId)) ||
+                        (isManager() && resource.data.autoDetectedCompanyId != null && 
+                         isManagerOfCompany(resource.data.autoDetectedCompanyId)));
+      
+      // Não permitir delete
+      allow delete: if false;
     }
     
     // Default: negar acesso

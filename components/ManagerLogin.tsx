@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { auth } from '../firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { isManager, getManagerCompany } from '../services/authService';
 import { companyService } from '../services/companyService';
 
@@ -63,10 +65,59 @@ export const ManagerLogin: React.FC<ManagerLoginProps> = ({ onLoginSuccess }) =>
                 return;
             }
 
-            // Login bem-sucedido
-            setTimeout(() => {
+            // Autenticar com Firebase Auth
+            const normalizedEmail = email.toLowerCase().trim();
+            try {
+                console.log('[ManagerLogin] Tentando fazer login com Firebase Auth...');
+                await signInWithEmailAndPassword(auth, normalizedEmail, password);
+                console.log('[ManagerLogin] Login bem-sucedido!');
+                // Login bem-sucedido - onAuthStateChanged no App.tsx vai detectar
                 onLoginSuccess(companyId);
-            }, 500);
+            } catch (authError: any) {
+                console.log('[ManagerLogin] Erro no login:', authError.code, authError.message);
+                
+                // Se usuário não existe, tentar criar
+                if (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential') {
+                    console.log('[ManagerLogin] Usuário não encontrado, tentando criar...');
+                    try {
+                        await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+                        console.log('[ManagerLogin] Usuário criado com sucesso!');
+                        onLoginSuccess(companyId);
+                    } catch (createError: any) {
+                        console.error('[ManagerLogin] Erro ao criar usuário:', createError);
+                        let errorMessage = 'Erro ao criar usuário gestor.';
+                        
+                        if (createError.code === 'auth/email-already-in-use') {
+                            errorMessage = 'Email já está em uso. Entre em contato com o administrador.';
+                        } else if (createError.code === 'auth/invalid-email') {
+                            errorMessage = 'Email inválido.';
+                        } else if (createError.code === 'auth/weak-password') {
+                            errorMessage = 'Senha muito fraca. Use uma senha mais forte.';
+                        } else {
+                            errorMessage = `Erro: ${createError.message || createError.code}. Entre em contato com o administrador.`;
+                        }
+                        
+                        setError(errorMessage);
+                        setIsLoading(false);
+                    }
+                } else if (authError.code === 'auth/wrong-password') {
+                    setError('Senha incorreta. Verifique sua senha e tente novamente.');
+                    setIsLoading(false);
+                } else if (authError.code === 'auth/invalid-email') {
+                    setError('Email inválido.');
+                    setIsLoading(false);
+                } else if (authError.code === 'auth/user-disabled') {
+                    setError('Usuário desabilitado. Entre em contato com o administrador.');
+                    setIsLoading(false);
+                } else if (authError.code === 'auth/too-many-requests') {
+                    setError('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+                    setIsLoading(false);
+                } else {
+                    console.error('[ManagerLogin] Auth error:', authError);
+                    setError(`Erro ao fazer login: ${authError.message || authError.code}. Entre em contato com o administrador.`);
+                    setIsLoading(false);
+                }
+            }
 
         } catch (err: any) {
             console.error('Erro no login do gestor:', err);

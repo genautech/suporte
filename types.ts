@@ -5,6 +5,7 @@ export enum MessageSender {
   USER = 'user',
   BOT = 'bot',
   SYSTEM = 'system',
+  ADMIN = 'admin',
 }
 
 export interface Message {
@@ -168,6 +169,13 @@ export interface Conversation {
 
 export type FAQCategory = 'compra' | 'troca' | 'rastreio' | 'cancelamento' | 'reembolso' | 'sla' | 'geral';
 
+export interface FAQAttachment {
+  type: 'image' | 'video' | 'file' | 'link';
+  url: string;
+  filename?: string;
+  size?: number;
+}
+
 export interface FAQEntry {
   id?: string;
   question: string;
@@ -181,6 +189,7 @@ export interface FAQEntry {
   views?: number; // Contador de visualizações
   helpful?: number; // Contador de "útil"
   companyId?: string; // ID da empresa ("general" para FAQ padrão, opcional para compatibilidade)
+  attachments?: FAQAttachment[];
 }
 
 export type TicketSubject = 
@@ -200,6 +209,7 @@ export interface FormField {
   type: 'text' | 'textarea' | 'select' | 'number' | 'date' | 'file';
   required?: boolean;
   placeholder?: string;
+  rows?: number;
   options?: Array<{ value: string; label: string }>;
   validation?: {
     min?: number;
@@ -280,4 +290,23 @@ export interface ConversationAIInsights {
   summary?: string; // Resumo da conversa
   keywords?: string[]; // Palavras-chave extraídas
   analyzedAt?: number; // Timestamp da análise
+}
+
+// Customer Knowledge types
+export interface CustomerKnowledgeEntry {
+  id?: string;
+  content: string;
+  source: 'conversation' | 'ticket' | 'manual';
+  sourceId?: string; // ID da conversa ou ticket
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CustomerKnowledge {
+  id?: string;
+  companyId: string;
+  knowledgeEntries: CustomerKnowledgeEntry[];
+  createdAt: number;
+  updatedAt: number;
 }

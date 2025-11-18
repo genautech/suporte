@@ -1,6 +1,5 @@
 // Fix: Implement the main App component to handle views.
 import React, { useState, useEffect } from 'react';
-import { HomePage } from './components/HomePage';
 import { UserLogin } from './components/UserLogin';
 import { AdminLogin } from './components/AdminLogin';
 import { ManagerLogin } from './components/ManagerLogin';
@@ -12,11 +11,11 @@ import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { AdminClientView } from './components/AdminClientView';
 import { Toaster } from './components/ui/toaster';
 
-type AppView = 'home' | 'userLogin' | 'adminLogin' | 'managerLogin';
+type AppView = 'userLogin' | 'adminLogin' | 'managerLogin';
 type AdminViewMode = 'admin' | 'client';
 
 const App: React.FC = () => {
-    const [view, setView] = useState<AppView>('home');
+    const [view, setView] = useState<AppView>('userLogin');
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
     const [isManager, setIsManager] = useState(false);
@@ -28,10 +27,12 @@ const App: React.FC = () => {
     useEffect(() => {
         // Detectar rota da URL (suporte incremental para /admin e /manager)
         const pathname = window.location.pathname;
-        if (pathname === '/admin' && view !== 'adminLogin') {
+        if (pathname === '/admin') {
             setView('adminLogin');
-        } else if (pathname === '/manager' && view !== 'managerLogin') {
+        } else if (pathname === '/manager') {
             setView('managerLogin');
+        } else {
+            setView('userLogin');
         }
         
         // Monitor authentication state changes
@@ -80,7 +81,7 @@ const App: React.FC = () => {
             setIsManager(false);
             setManagerCompanyId(null);
             setAdminViewMode('admin');
-            setView('home');
+            setView('userLogin');
         }).catch((error) => {
             console.error("Logout Error", error);
         });
@@ -129,15 +130,13 @@ const App: React.FC = () => {
             return <UserDashboard user={currentUser} onLogout={handleLogout} />;
         }
         switch (view) {
-            case 'userLogin':
-                return <UserLogin onBackToHome={() => setView('home')} />;
             case 'adminLogin':
                 return <AdminLogin onLoginSuccess={handleAdminLoginSuccess} />;
             case 'managerLogin':
                 return <ManagerLogin onLoginSuccess={handleManagerLoginSuccess} />;
-            case 'home':
+            case 'userLogin':
             default:
-                return <HomePage onUserLoginClick={() => setView('userLogin')} onAdminLoginClick={() => setView('adminLogin')} />;
+                return <UserLogin />;
         }
     };
 

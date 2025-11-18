@@ -160,6 +160,55 @@ export const resetPasswordWithCode = async (email: string, code: string): Promis
     };
   }
 };
+
+/**
+ * Sets manager password directly using admin endpoint (no code required)
+ * This uses Firebase Admin SDK on the backend to set password
+ */
+export const setManagerPassword = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  // Use production URL by default (proxy is deployed and working)
+  // Can override with VITE_AUTH_RESET_PROXY_URL env var if needed
+  const RESET_PROXY_URL = import.meta.env.VITE_AUTH_RESET_PROXY_URL || 'https://firebase-auth-reset-proxy-409489811769.southamerica-east1.run.app';
+  
+  try {
+    const response = await fetch(`${RESET_PROXY_URL}/admin/set-password`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    });
+    
+    const responseText = await response.text();
+    
+    if (!response.ok) {
+      let errorBody;
+      try {
+        errorBody = JSON.parse(responseText);
+      } catch (e) {
+        errorBody = { error: responseText || `HTTP ${response.status}` };
+      }
+      return { 
+        success: false, 
+        error: errorBody.error || 'Falha ao definir senha.' 
+      };
+    }
+    
+    const responseData = JSON.parse(responseText);
+    return { success: true };
+  } catch (error: any) {
+    console.error("[setManagerPassword] Erro ao definir senha:", error);
+    return { 
+      success: false, 
+      error: error.message || 'Erro desconhecido ao definir senha.' 
+    };
+  }
+};
+
 // User roles and permissions management
 const userRolesCollection = collection(db, 'userRoles');
 

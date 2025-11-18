@@ -143,15 +143,15 @@ export const AdminFAQ: React.FC<{ companyId?: string }> = ({ companyId }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Determinar companyId: 
+    // - Se for manager (companyId prop presente), sempre usa o companyId do manager
+    // - Se for admin geral, usa o selecionado no form (ou undefined se 'general')
+    const finalCompanyId = companyId 
+      ? companyId  // Manager sempre usa seu companyId
+      : (formData.companyId === 'general' || !formData.companyId ? undefined : formData.companyId); // Admin usa o selecionado
+    
     try {
       const tags = formData.tags.split(',').map(t => t.trim()).filter(t => t.length > 0);
-      
-      // Determinar companyId: 
-      // - Se for manager (companyId prop presente), sempre usa o companyId do manager
-      // - Se for admin geral, usa o selecionado no form (ou undefined se 'general')
-      const finalCompanyId = companyId 
-        ? companyId  // Manager sempre usa seu companyId
-        : (formData.companyId === 'general' || !formData.companyId ? undefined : formData.companyId); // Admin usa o selecionado
       
       if (editingEntry?.id) {
         await faqService.updateFAQEntry(editingEntry.id, {

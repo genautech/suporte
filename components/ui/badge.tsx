@@ -33,6 +33,7 @@ export interface BadgeProps
     VariantProps<typeof badgeVariants> {
   className?: string;
   key?: React.Key;
+  children?: React.ReactNode;
 }
 
 function Badge({ className, variant, ...props }: BadgeProps) {

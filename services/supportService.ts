@@ -1430,9 +1430,11 @@ export const supportService = {
         queryParams.push(`store_id=${encodeURIComponent(config.storeId)}`);
     }
     
-    // Usar shipping_email ao invés de customer_email (conforme documentação da API Cubbo)
+    // Tentar ambos shipping_email e customer_email para garantir compatibilidade
+    // A API Cubbo pode aceitar qualquer um dos dois dependendo da versão/configuração
     if (user.email) {
         queryParams.push(`shipping_email=${encodeURIComponent(user.email)}`);
+        queryParams.push(`customer_email=${encodeURIComponent(user.email)}`);
     } else if (user.phone) {
         const sanitizedPhone = user.phone.replace(/\D/g, '');
         queryParams.push(`customer_phone=${sanitizedPhone}`);
@@ -1490,10 +1492,17 @@ export const supportService = {
         }
         
         const data = await response.json();
-        // Log reduzido para melhor performance
-        console.log('[findOrdersByCustomer] Resposta recebida:', { 
-            ordersCount: Array.isArray(data) ? data.length : (data.orders?.length || data.data?.length || 0)
-        });
+        // Log detalhado para debug
+        console.log('[findOrdersByCustomer] Resposta recebida (raw):', JSON.stringify(data, null, 2));
+        console.log('[findOrdersByCustomer] Tipo da resposta:', typeof data, Array.isArray(data) ? 'Array' : 'Object');
+        if (!Array.isArray(data)) {
+            console.log('[findOrdersByCustomer] Chaves do objeto:', Object.keys(data));
+            console.log('[findOrdersByCustomer] data.orders:', data.orders);
+            console.log('[findOrdersByCustomer] data.orders tipo:', typeof data.orders, Array.isArray(data.orders) ? 'Array' : 'Object');
+            console.log('[findOrdersByCustomer] data.orders length:', data.orders?.length);
+            console.log('[findOrdersByCustomer] data.data:', data.data);
+            console.log('[findOrdersByCustomer] data.results:', data.results);
+        }
         
         // A API Cubbo pode retornar:
         // - Um array diretamente
@@ -1502,12 +1511,31 @@ export const supportService = {
         let orders: any[] = [];
         if (Array.isArray(data)) {
             orders = data;
+            console.log('[findOrdersByCustomer] Resposta é array direto, quantidade:', orders.length);
         } else {
             orders = data.orders || data.data || data.results || [];
+            console.log('[findOrdersByCustomer] Extraído de objeto, quantidade:', orders.length);
+            if (orders.length === 0) {
+                console.warn('[findOrdersByCustomer] Nenhum pedido encontrado na resposta. Estrutura completa:', JSON.stringify(data, null, 2));
+            }
+        }
+        
+        // Log antes da normalização
+        console.log('[findOrdersByCustomer] Pedidos antes da normalização:', orders.length);
+        if (orders.length > 0) {
+            console.log('[findOrdersByCustomer] Primeiro pedido (raw):', JSON.stringify(orders[0], null, 2));
         }
         
         // Normalizar dados de cada pedido
-        return orders.map(normalizeOrderData);
+        const normalizedOrders = orders.map(normalizeOrderData);
+        
+        // Log após normalização
+        console.log('[findOrdersByCustomer] Pedidos após normalização:', normalizedOrders.length);
+        if (normalizedOrders.length > 0) {
+            console.log('[findOrdersByCustomer] Primeiro pedido (normalizado):', JSON.stringify(normalizedOrders[0], null, 2));
+        }
+        
+        return normalizedOrders;
     } catch (error: any) {
         const errorMessage = error?.message || String(error);
         console.error("Failed to find orders by customer:", error);
