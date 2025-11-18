@@ -1,5 +1,5 @@
 // ManagerDashboard component for company managers
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { Ticket, SupportUser, CubboOrder } from '../types';
 import { supportService } from '../services/supportService';
 import { companyService } from '../services/companyService';
@@ -13,92 +13,59 @@ import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { motion } from 'framer-motion';
 
-// Dynamic component loaders to avoid initialization order issues
-const DynamicAdminFAQ: React.FC<{ companyId?: string }> = ({ companyId }) => {
-    const [Component, setComponent] = useState<React.ComponentType<{ companyId?: string }> | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+// Lazy load components only when needed - using factory functions to avoid hoisting issues
+const LazyAdminFAQ = lazy(() => 
+    import('./AdminFAQ').then(module => ({ default: module.AdminFAQ }))
+);
 
-    useEffect(() => {
-        import('./AdminFAQ')
-            .then(module => {
-                setComponent(() => module.AdminFAQ);
-                setIsLoading(false);
-            })
-            .catch(error => {
-                console.error('[ManagerDashboard] Erro ao carregar AdminFAQ:', error);
-                setIsLoading(false);
-            });
-    }, []);
-
-    if (isLoading) {
-        return (
-            <Card className="p-12 text-center">
-                <CardContent>
-                    <span className="loading loading-spinner loading-lg text-primary"></span>
-                    <p className="mt-4 text-muted-foreground font-medium">Carregando FAQ...</p>
-                </CardContent>
-            </Card>
-        );
-    }
-
-    if (!Component) {
-        return (
-            <Card className="p-12 text-center">
-                <CardContent>
-                    <p className="text-muted-foreground">Erro ao carregar FAQ.</p>
-                </CardContent>
-            </Card>
-        );
-    }
-
-    return <Component companyId={companyId} />;
-};
-
-const DynamicAdminKnowledgeBase: React.FC<{ companyId?: string }> = ({ companyId }) => {
-    const [Component, setComponent] = useState<React.ComponentType<{ companyId?: string }> | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        import('./AdminKnowledgeBase')
-            .then(module => {
-                setComponent(() => module.AdminKnowledgeBase);
-                setIsLoading(false);
-            })
-            .catch(error => {
-                console.error('[ManagerDashboard] Erro ao carregar AdminKnowledgeBase:', error);
-                setIsLoading(false);
-            });
-    }, []);
-
-    if (isLoading) {
-        return (
-            <Card className="p-12 text-center">
-                <CardContent>
-                    <span className="loading loading-spinner loading-lg text-primary"></span>
-                    <p className="mt-4 text-muted-foreground font-medium">Carregando Base de Conhecimento...</p>
-                </CardContent>
-            </Card>
-        );
-    }
-
-    if (!Component) {
-        return (
-            <Card className="p-12 text-center">
-                <CardContent>
-                    <p className="text-muted-foreground">Erro ao carregar Base de Conhecimento.</p>
-                </CardContent>
-            </Card>
-        );
-    }
-
-    return <Component companyId={companyId} />;
-};
+const LazyAdminKnowledgeBase = lazy(() => 
+    import('./AdminKnowledgeBase').then(module => ({ default: module.AdminKnowledgeBase }))
+);
 
 type ManagerView = 'tickets' | 'orders' | 'faq' | 'knowledge' | 'interactions' | 'users';
 
 interface ManagerDashboardProps {
     companyId: string;
     onLogout: () => void;
+}
+
+// Internal Error Boundary for ManagerDashboard
+class ManagerDashboardErrorBoundary extends React.Component<
+    { children: React.ReactNode; companyId: string },
+    { hasError: boolean; error?: Error }
+> {
+    constructor(props: { children: React.ReactNode; companyId: string }) {
+        super(props);
+        this.state = { hasError: false };
+    }
+
+    static getDerivedStateFromError(error: Error) {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+        console.error('[ManagerDashboard] Erro capturado:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <Card className="p-12 text-center m-4">
+                    <CardContent>
+                        <h2 className="text-xl font-bold mb-4">Erro ao carregar painel do gestor</h2>
+                        <p className="text-muted-foreground mb-4">
+                            {this.state.error?.message || 'Ocorreu um erro inesperado.'}
+                        </p>
+                        <Button onClick={() => window.location.reload()}>
+                            Recarregar Página
+                        </Button>
+                    </CardContent>
+                </Card>
+            );
+        }
+
+        return this.props.children;
+    }
 }
 
 const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout }) => {
@@ -619,9 +586,31 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                     </div>
                 );
             case 'faq':
-                return <DynamicAdminFAQ companyId={companyId} />;
+                return (
+                    <Suspense fallback={
+                        <Card className="p-12 text-center">
+                            <CardContent>
+                                <span className="loading loading-spinner loading-lg text-primary"></span>
+                                <p className="mt-4 text-muted-foreground font-medium">Carregando FAQ...</p>
+                            </CardContent>
+                        </Card>
+                    }>
+                        <LazyAdminFAQ companyId={companyId} />
+                    </Suspense>
+                );
             case 'knowledge':
-                return <DynamicAdminKnowledgeBase companyId={companyId} />;
+                return (
+                    <Suspense fallback={
+                        <Card className="p-12 text-center">
+                            <CardContent>
+                                <span className="loading loading-spinner loading-lg text-primary"></span>
+                                <p className="mt-4 text-muted-foreground font-medium">Carregando Base de Conhecimento...</p>
+                            </CardContent>
+                        </Card>
+                    }>
+                        <LazyAdminKnowledgeBase companyId={companyId} />
+                    </Suspense>
+                );
             case 'interactions':
                 return (
                     <div>
@@ -767,7 +756,8 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
     };
 
     return (
-        <div className="flex min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+        <ManagerDashboardErrorBoundary companyId={companyId}>
+            <div className="flex min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
             {/* Sidebar */}
             <motion.aside 
                 initial={{ x: -20, opacity: 0 }}
@@ -954,9 +944,12 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                     </DialogContent>
                 </Dialog>
             )}
-        </div>
+            </div>
+        </ManagerDashboardErrorBoundary>
     );
 };
 
-export default ManagerDashboard;
+// Export with explicit function to avoid hoisting issues
+const ManagerDashboardWrapper = ManagerDashboard;
+export default ManagerDashboardWrapper;
 
