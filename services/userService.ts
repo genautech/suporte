@@ -421,6 +421,55 @@ export const userService = {
       };
     }
   },
+
+  /**
+   * Busca a URL da loja (storeUrl) de um usuário
+   * Primeiro tenta buscar do campo storeUrl do usuário, depois da empresa associada
+   */
+  getUserStoreUrl: async (email: string): Promise<string | null> => {
+    try {
+      const normalizedEmail = email.toLowerCase().trim();
+      const userRef = doc(db, 'supportUsers', normalizedEmail);
+      const userDoc = await getDoc(userRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        
+        // Se o usuário tem storeUrl diretamente, retornar
+        if (userData.storeUrl) {
+          return userData.storeUrl;
+        }
+        
+        // Se não tem storeUrl direto, buscar da empresa associada
+        const companyId = userData.assignedCompanyId || userData.autoDetectedCompanyId;
+        if (companyId) {
+          try {
+            const storeUrl = await companyService.getCompanyStoreUrl(companyId);
+            return storeUrl;
+          } catch (error) {
+            console.error('[userService] Erro ao buscar storeUrl da empresa:', error);
+            return null;
+          }
+        }
+      }
+      
+      // Se usuário não existe ou não tem empresa associada, tentar identificar empresa pelo email
+      try {
+        const companyId = await companyService.getCompanyFromEmail(normalizedEmail);
+        if (companyId && companyId !== 'general') {
+          const storeUrl = await companyService.getCompanyStoreUrl(companyId);
+          return storeUrl;
+        }
+      } catch (error) {
+        console.error('[userService] Erro ao identificar empresa pelo email:', error);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[userService] Erro ao buscar storeUrl do usuário:', error);
+      return null;
+    }
+  },
 };
 
 

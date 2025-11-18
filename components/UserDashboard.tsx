@@ -109,6 +109,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
       // Buscar storeUrl do usuário
       userService.getUserStoreUrl(user.email).then((url) => {
         setStoreUrl(url);
+      }).catch((error) => {
+        console.error('[UserDashboard] Erro ao buscar storeUrl:', error);
+        setStoreUrl(null);
       });
     }
   }, [user, loadData, adminSelectedCompanyId]);
