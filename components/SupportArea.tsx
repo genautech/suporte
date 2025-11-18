@@ -59,43 +59,43 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
 
   return (
     <>
-    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-6">
-      <TabsList className={`grid w-full ${adminMode ? 'grid-cols-2 lg:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4'}`}>
-        <TabsTrigger value="orders">📦 Meus Pedidos</TabsTrigger>
-        <TabsTrigger value="tickets">🎫 Chamados</TabsTrigger>
-        <TabsTrigger value="faq">❓ FAQ</TabsTrigger>
-        <TabsTrigger value="chat">💬 Chat Suporte</TabsTrigger>
+    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-4 md:space-y-6">
+      <TabsList className={`grid w-full overflow-x-auto ${adminMode ? 'grid-cols-2 lg:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4'} gap-1 md:gap-2`}>
+        <TabsTrigger value="orders" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">📦 <span className="hidden sm:inline">Meus </span>Pedidos</TabsTrigger>
+        <TabsTrigger value="tickets" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">🎫 Chamados</TabsTrigger>
+        <TabsTrigger value="faq" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">❓ FAQ</TabsTrigger>
+        <TabsTrigger value="chat" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">💬 <span className="hidden sm:inline">Chat </span>Suporte</TabsTrigger>
         {adminMode && (
-          <TabsTrigger value="manage-faq">⚙️ Gerenciar FAQ</TabsTrigger>
+          <TabsTrigger value="manage-faq" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px]">⚙️ <span className="hidden sm:inline">Gerenciar </span>FAQ</TabsTrigger>
         )}
       </TabsList>
 
-      <TabsContent value="orders" className="min-h-[400px]">
+      <TabsContent value="orders" className="min-h-[300px] md:min-h-[400px]">
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <span className="text-2xl mr-2">📦</span>
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="flex items-center text-lg md:text-xl">
+              <span className="text-xl md:text-2xl mr-2">📦</span>
               Meus Pedidos
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 md:p-6">
             {isLoading ? (
-              <div className="text-center p-12">
+              <div className="text-center p-8 md:p-12">
                 <span className="loading loading-spinner loading-lg text-primary"></span>
-                <p className="mt-4 text-muted-foreground font-medium">Buscando seus pedidos...</p>
+                <p className="mt-4 text-muted-foreground font-medium text-sm md:text-base">Buscando seus pedidos...</p>
               </div>
             ) : orders.length === 0 ? (
-              <div className="text-center p-12">
-                <div className="text-7xl mb-4 animate-bounce">📭</div>
-                <p className="text-lg font-semibold text-foreground mb-2">
+              <div className="text-center p-8 md:p-12">
+                <div className="text-5xl md:text-7xl mb-4 animate-bounce">📭</div>
+                <p className="text-base md:text-lg font-semibold text-foreground mb-2">
                   Nenhum pedido encontrado
                 </p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs md:text-sm text-muted-foreground">
                   Seus pedidos aparecerão aqui quando fizer uma compra.
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3 md:space-y-4">
                 <OrderList orders={orders} onOrderClick={handleOrderClick} />
               </div>
             )}
@@ -103,57 +103,59 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
         </Card>
       </TabsContent>
 
-      <TabsContent value="tickets" className="min-h-[400px]">
+      <TabsContent value="tickets" className="min-h-[300px] md:min-h-[400px]">
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <span className="text-2xl mr-2">🎫</span>
-              Meus Chamados de Suporte
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="flex items-center text-lg md:text-xl">
+              <span className="text-xl md:text-2xl mr-2">🎫</span>
+              <span className="hidden sm:inline">Meus </span>Chamados<span className="hidden sm:inline"> de Suporte</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 md:p-6">
             {isLoading ? (
-              <div className="text-center p-12">
+              <div className="text-center p-8 md:p-12">
                 <span className="loading loading-spinner loading-lg text-primary"></span>
-                <p className="mt-4 text-muted-foreground font-medium">Carregando seus chamados...</p>
+                <p className="mt-4 text-muted-foreground font-medium text-sm md:text-base">Carregando seus chamados...</p>
               </div>
             ) : tickets.length === 0 ? (
-              <div className="text-center p-12">
-                <div className="text-7xl mb-4">💬</div>
-                <p className="text-lg font-semibold text-foreground mb-2">
+              <div className="text-center p-8 md:p-12">
+                <div className="text-5xl md:text-7xl mb-4">💬</div>
+                <p className="text-base md:text-lg font-semibold text-foreground mb-2">
                   Você ainda não tem chamados abertos
                 </p>
-                <p className="text-sm text-muted-foreground mb-6">
+                <p className="text-xs md:text-sm text-muted-foreground mb-6">
                   Abra um chamado de suporte ou use o chat para ajuda imediata!
                 </p>
-                <div className="flex gap-3 justify-center">
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Button
                     onClick={() => setIsTicketFormOpen(true)}
                     variant="default"
+                    className="min-h-[44px] text-sm md:text-base"
                   >
                     Abrir Chamado
                   </Button>
                   <Button
                     onClick={() => setActiveTab('chat')}
                     variant="outline"
+                    className="min-h-[44px] text-sm md:text-base"
                   >
                     Ir para Chat
                   </Button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 md:space-y-3">
                 {tickets.map(ticket => (
                   <Card
                     key={ticket.id}
                     className="cursor-pointer hover:bg-accent/50 transition-colors"
                     onClick={() => onTicketClick(ticket)}
                   >
-                    <CardContent className="pt-6">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg text-foreground mb-1">{ticket.subject}</h3>
-                          <p className="text-sm text-muted-foreground line-clamp-2">
+                    <CardContent className="p-4 md:pt-6">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-base md:text-lg text-foreground mb-1 break-words">{ticket.subject}</h3>
+                          <p className="text-xs md:text-sm text-muted-foreground line-clamp-2 break-words">
                             {ticket.description}
                           </p>
                         </div>
@@ -190,21 +192,24 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
         </Card>
       </TabsContent>
 
-      <TabsContent value="faq" className="min-h-[600px]">
-        <div className="space-y-6">
+      <TabsContent value="faq" className="min-h-[400px] md:min-h-[600px]">
+        <div className="space-y-4 md:space-y-6">
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center">
-                  <span className="text-2xl mr-2">❓</span>
-                  Perguntas Frequentes
+            <CardHeader className="p-4 md:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="flex items-center text-lg md:text-xl">
+                  <span className="text-xl md:text-2xl mr-2">❓</span>
+                  <span className="hidden sm:inline">Perguntas </span>Frequentes
                 </CardTitle>
-                <Button onClick={() => setIsTicketFormOpen(true)}>
+                <Button 
+                  onClick={() => setIsTicketFormOpen(true)}
+                  className="min-h-[44px] text-sm md:text-base w-full sm:w-auto"
+                >
                   Abrir Chamado
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 md:p-6">
               <IntelligentFAQSearch onOpenTicket={() => setIsTicketFormOpen(true)} companyId={companyId} />
             </CardContent>
           </Card>
@@ -213,9 +218,9 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
         </div>
       </TabsContent>
 
-      <TabsContent value="chat" className="min-h-[600px]">
+      <TabsContent value="chat" className="min-h-[500px] md:min-h-[600px]">
         <Card className="flex flex-col h-full">
-          <CardContent className="flex-1 overflow-hidden p-0 h-[600px]">
+          <CardContent className="flex-1 overflow-hidden p-0 h-[500px] md:h-[600px]">
             {/* Garantir que email seja válido antes de passar para Chatbot */}
             {user.email && user.email.trim() ? (
               <Chatbot
@@ -238,7 +243,7 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
       </TabsContent>
 
       {adminMode && (
-        <TabsContent value="manage-faq" className="min-h-[600px]">
+        <TabsContent value="manage-faq" className="min-h-[400px] md:min-h-[600px]">
           <AdminFAQ companyId={companyId} />
         </TabsContent>
       )}

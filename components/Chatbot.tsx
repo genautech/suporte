@@ -14,6 +14,7 @@ import { OrderList } from './OrderList';
 import { EmailRequestModal } from './EmailRequestModal';
 import { ConversationFeedback } from './ConversationFeedback';
 import { OrderSelectionModal } from './OrderSelectionModal';
+import { CodeBlock } from './CodeBlock';
 import { GenerateContentResponse } from '@google/genai';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -75,9 +76,13 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
             });
         }
         
-        // Verificar se é usuário retornante
+        // Verificar se é usuário retornante e carregar contexto
         if (user.email) {
-            conversationService.getLastConversation(user.email).then((lastConv) => {
+            Promise.all([
+                conversationService.getLastConversation(user.email),
+                supportService.getTicketsByUser({ email: user.email, phone: user.phone }),
+                supportService.findOrdersByCustomer({ email: user.email, phone: user.phone })
+            ]).then(([lastConv, tickets, orders]) => {
                 if (lastConv) {
                     setIsReturningUser(true);
                     // Carregar histórico recente
@@ -85,21 +90,81 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
                         setConversationHistory(history);
                     });
                 }
+                
+                // Armazenar tickets e pedidos para uso na mensagem inicial
+                // Filtrar apenas tickets não resolvidos
+                const unresolvedTickets = tickets.filter(t => 
+                    t.status !== 'resolvido' && t.status !== 'fechado' && t.status !== 'arquivado'
+                );
+                
+                // Pedidos recentes (últimos 30 dias)
+                const recentOrders = orders.filter(order => {
+                    if (!order.created_at) return false;
+                    const orderDate = new Date(order.created_at);
+                    const thirtyDaysAgo = new Date();
+                    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                    return orderDate >= thirtyDaysAgo;
+                }).slice(0, 3); // Limitar a 3 pedidos mais recentes
+                
+                // Armazenar no estado para uso na mensagem inicial
+                if (unresolvedTickets.length > 0 || recentOrders.length > 0) {
+                    // Adicionar contexto ao conversationHistory para uso na mensagem inicial
+                    setConversationHistory(prev => [
+                        ...prev,
+                        {
+                            unresolvedTickets,
+                            recentOrders,
+                        } as any
+                    ]);
+                }
+            }).catch(error => {
+                console.error('[Chatbot] Erro ao carregar contexto inicial:', error);
             });
         }
-    }, [user.email, companyId]);
+    }, [user.email, user.phone, companyId]);
 
     useEffect(() => {
         if ((isOpen || inline) && messages.length === 0) {
             let welcomeMessage = companyGreeting;
             
+            // Buscar contexto de aprendizado (tickets não resolvidos e pedidos recentes)
+            const contextData = conversationHistory.find((h: any) => h.unresolvedTickets || h.recentOrders);
+            const unresolvedTickets = contextData?.unresolvedTickets || [];
+            const recentOrders = contextData?.recentOrders || [];
+            
             if (isReturningUser && user.name) {
                 welcomeMessage = `${companyGreeting}\n\nOlá novamente, ${user.name}! 👋 Que bom te ver de volta!`;
-                // NÃO mencionar pedidos de conversas anteriores para evitar confusão
-                // O Gemini deve sempre buscar informações reais antes de mencionar pedidos
             }
             
-            welcomeMessage += '\n\nVocê pode rastrear um pedido, solicitar uma troca ou tirar dúvidas.';
+            // Adicionar contexto baseado em aprendizado
+            if (unresolvedTickets.length > 0) {
+                welcomeMessage += `\n\n📋 Vejo que você tem ${unresolvedTickets.length} chamado(s) de suporte em aberto.`;
+                if (unresolvedTickets.length === 1) {
+                    welcomeMessage += ` Posso ajudar com o chamado "${unresolvedTickets[0].subject}"?`;
+                } else {
+                    welcomeMessage += ` Posso ajudar com algum deles?`;
+                }
+            }
+            
+            if (recentOrders.length > 0) {
+                if (unresolvedTickets.length > 0) {
+                    welcomeMessage += `\n\n📦 Também encontrei ${recentOrders.length} pedido(s) recente(s) associado(s) ao seu email.`;
+                } else {
+                    welcomeMessage += `\n\n📦 Encontrei ${recentOrders.length} pedido(s) recente(s) associado(s) ao seu email.`;
+                }
+                if (recentOrders.length === 1) {
+                    welcomeMessage += ` Gostaria de rastrear o pedido ${recentOrders[0].order_number}?`;
+                } else {
+                    const orderNumbers = recentOrders.slice(0, 3).map(o => o.order_number).join(', ');
+                    welcomeMessage += ` Gostaria de rastrear algum deles (${orderNumbers}${recentOrders.length > 3 ? '...' : ''})?`;
+                }
+            }
+            
+            if (unresolvedTickets.length === 0 && recentOrders.length === 0) {
+                welcomeMessage += '\n\nVocê pode rastrear um pedido, solicitar uma troca ou tirar dúvidas.';
+            } else {
+                welcomeMessage += '\n\nOu se preferir, posso ajudar com outras questões!';
+            }
             
             setMessages([
                 { id: 'welcome', text: welcomeMessage, sender: MessageSender.BOT }
@@ -804,6 +869,48 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
         return sanitized;
     };
 
+    // Função para detectar e extrair blocos de código de uma mensagem
+    const parseCodeBlocks = (text: string): Array<{ type: 'text' | 'code'; content: string; language?: string }> => {
+        const parts: Array<{ type: 'text' | 'code'; content: string; language?: string }> = [];
+        
+        // Padrão para detectar blocos de código markdown: ```language\ncode\n```
+        const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+        let lastIndex = 0;
+        let match;
+        
+        while ((match = codeBlockRegex.exec(text)) !== null) {
+            // Adicionar texto antes do bloco de código
+            if (match.index > lastIndex) {
+                const textBefore = text.substring(lastIndex, match.index);
+                if (textBefore.trim()) {
+                    parts.push({ type: 'text', content: textBefore });
+                }
+            }
+            
+            // Adicionar bloco de código
+            const language = match[1] || undefined;
+            const code = match[2].trim();
+            parts.push({ type: 'code', content: code, language });
+            
+            lastIndex = match.index + match[0].length;
+        }
+        
+        // Adicionar texto restante após o último bloco de código
+        if (lastIndex < text.length) {
+            const textAfter = text.substring(lastIndex);
+            if (textAfter.trim()) {
+                parts.push({ type: 'text', content: textAfter });
+            }
+        }
+        
+        // Se não encontrou nenhum bloco de código, retornar o texto inteiro
+        if (parts.length === 0) {
+            parts.push({ type: 'text', content: text });
+        }
+        
+        return parts;
+    };
+
     const addMessage = (text: string, sender: MessageSender) => {
         // Sanitizar texto antes de adicionar se for mensagem do bot
         const sanitizedText = sender === MessageSender.BOT 
@@ -961,20 +1068,45 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                                         </div>
                                         <div className={`flex-1 max-w-[80%] ${
                                             msg.sender === MessageSender.USER ? 'items-end' : 'items-start'
-                                        } flex flex-col`}>
-                                            <Card className={`p-3 ${
-                                                msg.sender === MessageSender.USER 
-                                                    ? 'bg-primary text-primary-foreground border-primary/20' 
-                                                    : msg.sender === MessageSender.SYSTEM
-                                                    ? 'bg-warning/10 text-warning-foreground border-warning/20'
-                                                    : 'bg-card border-border'
-                                            }`}>
-                                                <p className={`text-sm whitespace-pre-wrap ${
-                                                    msg.sender === MessageSender.USER ? 'text-primary-foreground' : ''
-                                                }`}>
-                                                    {msg.text}
-                                                </p>
-                                            </Card>
+                                        } flex flex-col gap-2`}>
+                                            {(() => {
+                                                // Parsear blocos de código apenas para mensagens do bot
+                                                const parts = msg.sender === MessageSender.BOT 
+                                                    ? parseCodeBlocks(msg.text)
+                                                    : [{ type: 'text' as const, content: msg.text }];
+                                                
+                                                return parts.map((part, partIndex) => {
+                                                    if (part.type === 'code') {
+                                                        return (
+                                                            <CodeBlock
+                                                                key={`code-${msg.id}-${partIndex}`}
+                                                                code={part.content}
+                                                                language={part.language}
+                                                                className="w-full"
+                                                            />
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <Card 
+                                                                key={`text-${msg.id}-${partIndex}`}
+                                                                className={`p-3 ${
+                                                                    msg.sender === MessageSender.USER 
+                                                                        ? 'bg-primary text-primary-foreground border-primary/20' 
+                                                                        : msg.sender === MessageSender.SYSTEM
+                                                                        ? 'bg-warning/10 text-warning-foreground border-warning/20'
+                                                                        : 'bg-card border-border'
+                                                                }`}
+                                                            >
+                                                                <p className={`text-sm whitespace-pre-wrap ${
+                                                                    msg.sender === MessageSender.USER ? 'text-primary-foreground' : ''
+                                                                }`}>
+                                                                    {part.content}
+                                                                </p>
+                                                            </Card>
+                                                        );
+                                                    }
+                                                });
+                                            })()}
                                         </div>
                                     </motion.div>
                                 )
@@ -1071,15 +1203,40 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
       <OrderSelectionModal
         isOpen={showOrderSelection}
         orders={selectedOrders}
-        onSelect={(order) => {
+        allowMultiple={true}
+        onSelect={(orderOrOrders) => {
           setShowOrderSelection(false);
-          // Renderizar informações do pedido selecionado
-          renderComponentInChat(<OrderList orders={[order]} />);
-          const orderDetails = supportService.formatOrderDetails(order);
-          addMessage(`Informações do pedido selecionado:\n\n${orderDetails}`, MessageSender.BOT);
-          // Adicionar orderNumber aos mencionados
-          if (order.order_number && !mentionedOrderNumbers.includes(order.order_number)) {
-            setMentionedOrderNumbers(prev => [...prev, order.order_number]);
+          // Verificar se é array (múltiplos) ou objeto único
+          const ordersArray = Array.isArray(orderOrOrders) ? orderOrOrders : [orderOrOrders];
+          
+          // Renderizar informações dos pedidos selecionados
+          renderComponentInChat(<OrderList orders={ordersArray} />);
+          
+          if (ordersArray.length === 1) {
+            const order = ordersArray[0];
+            const orderDetails = supportService.formatOrderDetails(order);
+            addMessage(`Informações do pedido selecionado:\n\n${orderDetails}`, MessageSender.BOT);
+            // Adicionar orderNumber aos mencionados
+            if (order.order_number && !mentionedOrderNumbers.includes(order.order_number)) {
+              setMentionedOrderNumbers(prev => [...prev, order.order_number]);
+            }
+          } else {
+            // Múltiplos pedidos selecionados
+            const orderNumbers = ordersArray.map(o => o.order_number).filter(Boolean);
+            addMessage(
+              `Informações dos ${ordersArray.length} pedidos selecionados:\n\n` +
+              ordersArray.map(order => {
+                const details = supportService.formatOrderDetails(order);
+                return `📦 Pedido ${order.order_number}:\n${details}`;
+              }).join('\n\n---\n\n'),
+              MessageSender.BOT
+            );
+            // Adicionar todos os orderNumbers aos mencionados
+            orderNumbers.forEach(orderNumber => {
+              if (orderNumber && !mentionedOrderNumbers.includes(orderNumber)) {
+                setMentionedOrderNumbers(prev => [...prev, orderNumber]);
+              }
+            });
           }
         }}
         onClose={() => {
