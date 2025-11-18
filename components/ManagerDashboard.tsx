@@ -245,20 +245,33 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
         }
     };
 
-    const formatDate = (dateString?: string) => {
-        if (!dateString) return '-';
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('pt-BR', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-            });
-        } catch {
-            return dateString;
-        }
+    const parseDateValue = (value?: string | number | Date | null) => {
+        if (value === undefined || value === null) return null;
+        const date = value instanceof Date ? value : new Date(value);
+        if (isNaN(date.getTime())) return null;
+        return date;
+    };
+
+    const formatDateOnly = (value?: string | number | Date | null) => {
+        const date = parseDateValue(value);
+        if (!date) return '-';
+        return date.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+        });
+    };
+
+    const formatDateTime = (value?: string | number | Date | null) => {
+        const date = parseDateValue(value);
+        if (!date) return '-';
+        return date.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
     };
 
     const loadOrders = useCallback(async () => {
@@ -387,7 +400,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                                                         </Badge>
                                                     </td>
                                                     <td className="text-sm text-gray-600">
-                                                        {new Date(ticket.createdAt).toLocaleDateString('pt-BR')}
+                                                        {formatDateOnly(ticket.createdAt)}
                                                     </td>
                                                     <td className="text-sm text-gray-600">
                                                         {ticket.orderNumber || '-'}
@@ -489,7 +502,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                                                     {order.customer_email || order.shipping_email || '-'}
                                                 </td>
                                                 <td className="text-sm text-gray-600">
-                                                    {formatDate(order.created_at)}
+                                                    {formatDateTime(order.created_at)}
                                                 </td>
                                                 <td className="text-sm">
                                                     {formatCurrency(order.total_amount, order.currency)}
@@ -591,7 +604,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                                                             : '-'}
                                                     </td>
                                                     <td className="text-sm text-gray-600">
-                                                        {new Date(conv.createdAt).toLocaleDateString('pt-BR')}
+                                                        {formatDateOnly(conv.createdAt)}
                                                     </td>
                                                     <td>
                                                         <Button 
@@ -659,7 +672,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                                                 <td>{user.totalConversations || 0}</td>
                                                 <td>{user.totalTickets || 0}</td>
                                                 <td className="text-sm text-gray-600">
-                                                    {new Date(user.lastAccessAt).toLocaleDateString('pt-BR')}
+                                                    {formatDateOnly(user.lastAccessAt)}
                                                 </td>
                                             </tr>
                                         ))}
@@ -794,7 +807,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                             <DialogTitle>Detalhes da Interação</DialogTitle>
                             <DialogDescription>
                                 Cliente: {selectedConversation.userId} | 
-                                Criada em: {new Date(selectedConversation.createdAt).toLocaleString('pt-BR')}
+                                Criada em: {formatDateTime(selectedConversation.createdAt)}
                             </DialogDescription>
                         </DialogHeader>
                         
@@ -829,7 +842,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                                                     {msg.sender === MessageSender.USER ? '👤 Cliente' : '🤖 Bot'}
                                                 </span>
                                                 <span className="text-xs text-muted-foreground">
-                                                    {new Date(msg.timestamp).toLocaleString('pt-BR')}
+                                                    {formatDateTime(msg.timestamp)}
                                                 </span>
                                             </div>
                                             <p className="text-sm">{msg.text}</p>

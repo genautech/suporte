@@ -241,6 +241,19 @@ export const AdminCompanies: React.FC = () => {
                   )}
                 </div>
               )}
+              {company.storeUrl && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">URL da Loja:</Label>
+                  <a
+                    href={company.storeUrl.startsWith('http') ? company.storeUrl : `https://${company.storeUrl}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm text-primary underline break-all"
+                  >
+                    {company.storeUrl}
+                  </a>
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -310,6 +323,20 @@ export const AdminCompanies: React.FC = () => {
               />
               <p className="text-xs text-muted-foreground">
                 Palavras-chave que podem aparecer no email do usuário
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="storeUrl">URL da Loja</Label>
+              <Input
+                id="storeUrl"
+                type="text"
+                value={formData.storeUrl}
+                onChange={(e) => setFormData({ ...formData, storeUrl: e.target.value })}
+                placeholder="https://minha-loja.com ou loja.yoobe.co"
+              />
+              <p className="text-xs text-muted-foreground">
+                Utilizada para redirecionar clientes e identificar automaticamente a empresa.
               </p>
             </div>
 
