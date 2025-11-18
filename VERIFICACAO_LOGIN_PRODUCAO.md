@@ -2,7 +2,7 @@
 
 ## 📋 Informações da Aplicação
 
-- **URL de Produção:** https://suporte-lojinha-4hv4ucvfra-rj.a.run.app
+- **URL de Produção:** https://suporte-lojinha-409489811769.southamerica-east1.run.app/
 - **Status HTTP:** ✅ 200 OK
 - **Última Atualização:** 2025-11-05 18:22:53 GMT
 
@@ -27,7 +27,7 @@
 ## 🔍 Testes Necessários
 
 ### Teste 1: Verificar Carregamento da Página
-1. Acesse: https://suporte-lojinha-4hv4ucvfra-rj.a.run.app
+1. Acesse: https://suporte-lojinha-409489811769.southamerica-east1.run.app/
 2. Abra o Console do Navegador (F12)
 3. Verifique se há erros no console
 4. Verifique se a página inicial (HomePage) aparece
@@ -100,7 +100,7 @@
 
 ## 🔗 Links Úteis
 
-- **Aplicação:** https://suporte-lojinha-4hv4ucvfra-rj.a.run.app
+- **Aplicação:** https://suporte-lojinha-409489811769.southamerica-east1.run.app/
 - **Firebase Console:** https://console.firebase.google.com/project/suporte-7e68b/authentication/settings
 - **Cloud Run Logs:** https://console.cloud.google.com/run/detail/southamerica-east1/suporte-lojinha/logs?project=suporte-7e68b
 

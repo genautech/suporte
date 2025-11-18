@@ -6,6 +6,12 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'https://suporte-lojinha-409
 
 test.describe('Manager Dashboard', () => {
   test.beforeEach(async ({ page }) => {
+    page.on('console', msg => {
+      console.log(`[browser:${msg.type()}] ${msg.text()}`);
+    });
+    page.on('pageerror', error => {
+      console.log('[browser:pageerror]', error);
+    });
     // Navegar para a página de login do gestor
     await page.goto(`${BASE_URL}/manager`);
   });

@@ -5,6 +5,7 @@ import { UserLogin } from './components/UserLogin';
 import { AdminLogin } from './components/AdminLogin';
 import { ManagerLogin } from './components/ManagerLogin';
 import UserDashboard from './components/UserDashboard';
+import ManagerDashboard from './components/ManagerDashboard';
 import { auth } from './firebase';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { AdminClientView } from './components/AdminClientView';
@@ -13,17 +14,17 @@ import { storeContext } from './lib/storeContext';
 import { getManagerCompany, getUserRole } from './services/authService';
 
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
-const ManagerDashboard = lazy(() => import('./components/ManagerDashboard'));
 
 type AppView = 'home' | 'userLogin' | 'adminLogin' | 'managerLogin';
 type AdminViewMode = 'admin' | 'client';
 
 const App: React.FC = () => {
     const [view, setView] = useState<AppView>('home');
+    const [entryPoint, setEntryPoint] = useState<AppView>('home');
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
     const [isManager, setIsManager] = useState(false);
-    const [managerCompanyId, setManagerCompanyId] = useState<string | null>(null);
+    const [managerCompanyId, setManagerCompanyId] = useState<string | null>(() => storeContext.getStoredCompanyId());
     const [adminViewMode, setAdminViewMode] = useState<AdminViewMode>('admin');
     const [adminSelectedCompanyId, setAdminSelectedCompanyId] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(true);
@@ -34,10 +35,13 @@ const App: React.FC = () => {
         const pathname = window.location.pathname;
         if (pathname === '/admin') {
             setView('adminLogin');
+            setEntryPoint('adminLogin');
         } else if (pathname === '/manager') {
             setView('managerLogin');
+            setEntryPoint('managerLogin');
         } else {
             setView('home');
+            setEntryPoint('home');
         }
         
         // Monitor authentication state changes
@@ -83,22 +87,37 @@ const App: React.FC = () => {
 
     const resolveUserRole = async (email: string) => {
         const role = await getUserRole(email);
+        const storedCompanyId = storeContext.getStoredCompanyId();
+        const forceManager = entryPoint === 'managerLogin' || (typeof window !== 'undefined' && window.location.pathname === '/manager');
+        const applyManagerSession = (companyId: string) => {
+            setManagerCompanyId(companyId);
+            storeContext.setStoredCompanyId(companyId);
+            setIsManager(true);
+            setIsAdmin(false);
+        };
         if (role === 'admin') {
             setIsAdmin(true);
             setIsManager(false);
             setManagerCompanyId(null);
         } else if (role === 'manager') {
-            const companyId = await getManagerCompany(email);
+            let companyId = await getManagerCompany(email);
+            if (!companyId && storedCompanyId) {
+                console.warn('[App] getManagerCompany retornou vazio, usando companyId armazenado localmente');
+                companyId = storedCompanyId;
+            }
             if (companyId) {
-                setManagerCompanyId(companyId);
-                setIsManager(true);
+                applyManagerSession(companyId);
             } else {
                 console.warn('[App] Usuário manager sem companyId associado:', email);
                 setIsManager(false);
                 setManagerCompanyId(null);
             }
-            setIsAdmin(false);
         } else {
+            if (forceManager && storedCompanyId) {
+                console.warn('[App] Aplicando modo gestor baseado no entry point e companyId armazenado.');
+                applyManagerSession(storedCompanyId);
+                return;
+            }
             setIsAdmin(false);
             setIsManager(false);
             setManagerCompanyId(null);
@@ -106,6 +125,7 @@ const App: React.FC = () => {
     };
 
     const handleAdminLoginSuccess = () => {
+        setEntryPoint('adminLogin');
         setIsAdmin(true);
         setIsManager(false);
         setManagerCompanyId(null);
@@ -113,9 +133,11 @@ const App: React.FC = () => {
     };
 
     const handleManagerLoginSuccess = (companyId: string) => {
+        setEntryPoint('managerLogin');
         setIsManager(true);
         setIsAdmin(false);
         setManagerCompanyId(companyId);
+        storeContext.setStoredCompanyId(companyId);
     };
     
     const handleLogout = () => {
@@ -123,6 +145,8 @@ const App: React.FC = () => {
             setIsAdmin(false);
             setIsManager(false);
             setManagerCompanyId(null);
+            storeContext.setStoredCompanyId(null);
+            setEntryPoint('home');
             setAdminViewMode('admin');
             setView('home');
             // Limpar email salvo do localStorage ao fazer logout
@@ -148,12 +172,10 @@ const App: React.FC = () => {
     const renderView = () => {
         if (isManager && managerCompanyId) {
             return (
-                <Suspense fallback={<FullPageLoader message="Carregando painel do gestor..." />}>
-                    <ManagerDashboard 
-                        companyId={managerCompanyId}
-                        onLogout={handleLogout}
-                    />
-                </Suspense>
+                <ManagerDashboard 
+                    companyId={managerCompanyId}
+                    onLogout={handleLogout}
+                />
             );
         }
         if (isAdmin) {

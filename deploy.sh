@@ -64,7 +64,20 @@ fi
 # 3. Build (se não pular)
 if [ "$SKIP_BUILD" = false ]; then
   echo -e "${GREEN}📦 Fazendo build da imagem...${NC}"
-  gcloud builds submit --config cloudbuild.yaml --project ${PROJECT_ID}
+  
+  # Verificar se VITE_GEMINI_API_KEY está definida
+  if [ -z "$VITE_GEMINI_API_KEY" ]; then
+    echo -e "${YELLOW}⚠️  VITE_GEMINI_API_KEY não definida.${NC}"
+    echo -e "${YELLOW}   Defina a variável de ambiente antes de executar:${NC}"
+    echo -e "${YELLOW}   export VITE_GEMINI_API_KEY=sua_chave_aqui${NC}"
+    echo -e "${YELLOW}   Ou passe como argumento: VITE_GEMINI_API_KEY=chave ./deploy.sh${NC}"
+    exit 1
+  fi
+  
+  # Fazer build com substituições
+  gcloud builds submit --config cloudbuild.yaml \
+    --substitutions=_VITE_GEMINI_API_KEY="${VITE_GEMINI_API_KEY}" \
+    --project ${PROJECT_ID}
   
   if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Erro no build!${NC}"
