@@ -17,7 +17,26 @@ class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[ErrorBoundary] Erro capturado:', error, errorInfo);
+    console.error('[ErrorBoundary] Erro capturado:', {
+      error: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+      url: window.location.href
+    });
+    
+    // Tentar enviar erro para um serviço de logging se disponível
+    if (typeof window !== 'undefined' && (window as any).gtag) {
+      try {
+        (window as any).gtag('event', 'exception', {
+          description: `App Error: ${error.message}`,
+          fatal: true
+        });
+      } catch (e) {
+        // Ignorar erros de gtag
+      }
+    }
   }
 
   render() {

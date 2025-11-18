@@ -1457,21 +1457,45 @@ export const supportService = {
   },
   
   findOrdersByCustomer: async (user: { email?: string | null; phone?: string | null }): Promise<CubboOrder[]> => {
+    console.log('[findOrdersByCustomer] Iniciando busca de pedidos:', {
+      email: user.email,
+      phone: user.phone,
+      timestamp: new Date().toISOString()
+    });
+    
     let accessToken: string;
     let config: ApiConfig | null;
 
     try {
+        console.log('[findOrdersByCustomer] Buscando configuração da API Cubbo...');
         config = await getCubboConfig();
-        if (!config) return [];
+        if (!config) {
+            console.error("[findOrdersByCustomer] Configuração da API Cubbo não encontrada");
+            return [];
+        }
+        
+        console.log('[findOrdersByCustomer] Configuração encontrada:', {
+          url: config.url,
+          storeId: config.storeId,
+          hasClientId: !!config.clientId,
+          hasClientSecret: !!config.clientSecret
+        });
         
         if (!config.storeId) {
             console.error("[findOrdersByCustomer] store_id não configurado");
             return [];
         } 
+        
+        console.log('[findOrdersByCustomer] Obtendo access token...');
         accessToken = await getAccessToken();
+        console.log('[findOrdersByCustomer] Access token obtido com sucesso');
     } catch (error: any) {
-        console.error("Authentication failed in findOrdersByCustomer:", error);
-        return []; // Silently fail and return no orders.
+        console.error("[findOrdersByCustomer] Falha na autenticação:", {
+          error: error?.message || 'Erro desconhecido',
+          stack: error?.stack,
+          timestamp: new Date().toISOString()
+        });
+        return [];
     }
     
     let queryParams: string[] = [];
@@ -2012,11 +2036,24 @@ export const supportService = {
 
   // Listar pedidos relacionados à empresa para o gestor
   getCompanyOrders: async (companyId: string): Promise<CubboOrder[]> => {
+    console.log('[getCompanyOrders] Iniciando busca de pedidos para companyId:', companyId);
+    const startTime = Date.now();
     try {
       const { companyService } = await import('./companyService');
+      console.log('[getCompanyOrders] Buscando dados da empresa...');
       const company = await companyService.getCompany(companyId);
+      console.log('[getCompanyOrders] Empresa encontrada:', {
+        id: company?.id,
+        name: company?.name,
+        managerEmail: company?.managerEmail,
+        keywords: company?.keywords,
+        storeId: company?.storeId
+      });
+      
       const { userService } = await import('./userService');
+      console.log('[getCompanyOrders] Buscando usuários da empresa...');
       const companyUsers = await userService.getUsersByCompany(companyId);
+      console.log('[getCompanyOrders] Usuários encontrados:', companyUsers.length);
 
       const companyUserEmails = new Set(
         companyUsers
@@ -2027,6 +2064,12 @@ export const supportService = {
       if (company?.managerEmail) {
         companyUserEmails.add(company.managerEmail.toLowerCase());
       }
+
+      console.log('[getCompanyOrders] Emails para buscar pedidos:', {
+        totalEmails: companyUserEmails.size,
+        emails: Array.from(companyUserEmails),
+        managerEmail: company?.managerEmail
+      });
 
       const ordersMap = new Map<string, CubboOrder>();
 
@@ -2041,11 +2084,17 @@ export const supportService = {
 
       const fetchAndStoreOrders = async (email: string): Promise<CubboOrder[]> => {
         try {
+          console.log(`[getCompanyOrders] Buscando pedidos para email: ${email}`);
           const orders = await supportService.findOrdersByCustomer({ email });
+          console.log(`[getCompanyOrders] Pedidos encontrados para ${email}:`, orders.length);
           orders.forEach(order => addOrderToMap(order, email));
           return orders;
-        } catch (error) {
-          console.error(`[getCompanyOrders] Erro ao buscar pedidos para ${email}:`, error);
+        } catch (error: any) {
+          console.error(`[getCompanyOrders] Erro ao buscar pedidos para ${email}:`, {
+            error: error?.message || 'Erro desconhecido',
+            stack: error?.stack,
+            email
+          });
           return [];
         }
       };
@@ -2053,6 +2102,7 @@ export const supportService = {
       const closedOrderEmails = new Set<string>();
 
       // Buscar pedidos dos usuários da empresa
+      console.log('[getCompanyOrders] Iniciando busca de pedidos para usuários da empresa...');
       for (const email of companyUserEmails) {
         const orders = await fetchAndStoreOrders(email);
         orders.forEach(order => {
@@ -2063,9 +2113,11 @@ export const supportService = {
           }
         });
       }
+      console.log('[getCompanyOrders] Emails com pedidos entregues:', closedOrderEmails.size);
 
       // Buscar pedidos relacionados às palavras-chave da empresa
       if (company?.keywords && company.keywords.length > 0) {
+        console.log('[getCompanyOrders] Buscando pedidos relacionados às palavras-chave:', company.keywords);
         for (const email of closedOrderEmails) {
           try {
             const keywordOrders = await supportService.findOrdersByCustomer({ email });
@@ -2075,22 +2127,44 @@ export const supportService = {
                 orderData.includes(keyword.toLowerCase())
               );
               if (matchesKeyword) {
+                console.log(`[getCompanyOrders] Pedido ${order.order_number} corresponde à palavra-chave`);
                 addOrderToMap(order, email);
               }
             });
-          } catch (error) {
-            console.error(`[getCompanyOrders] Erro ao buscar pedidos relacionados para ${email}:`, error);
+          } catch (error: any) {
+            console.error(`[getCompanyOrders] Erro ao buscar pedidos relacionados para ${email}:`, {
+              error: error?.message || 'Erro desconhecido',
+              stack: error?.stack,
+              email
+            });
           }
         }
       }
 
-      return Array.from(ordersMap.values()).sort((a, b) => {
+      const finalOrders = Array.from(ordersMap.values()).sort((a, b) => {
         const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
         const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
         return dateB - dateA;
       });
-    } catch (error) {
-      console.error('[getCompanyOrders] Erro ao coletar pedidos da empresa:', error);
+
+      const duration = Date.now() - startTime;
+      console.log('[getCompanyOrders] Busca concluída:', {
+        totalOrders: finalOrders.length,
+        duration: `${duration}ms`,
+        companyId,
+        timestamp: new Date().toISOString()
+      });
+
+      return finalOrders;
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.error('[getCompanyOrders] Erro ao coletar pedidos da empresa:', {
+        error: error?.message || 'Erro desconhecido',
+        stack: error?.stack,
+        companyId,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString()
+      });
       return [];
     }
   },

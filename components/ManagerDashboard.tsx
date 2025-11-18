@@ -44,7 +44,27 @@ class ManagerDashboardErrorBoundary extends React.Component<
     }
 
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-        console.error('[ManagerDashboard] Erro capturado:', error, errorInfo);
+        console.error('[ManagerDashboard] Erro capturado:', {
+            error: error.message,
+            stack: error.stack,
+            componentStack: errorInfo.componentStack,
+            companyId: this.props.companyId,
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            url: window.location.href
+        });
+        
+        // Tentar enviar erro para um serviço de logging se disponível
+        if (typeof window !== 'undefined' && (window as any).gtag) {
+            try {
+                (window as any).gtag('event', 'exception', {
+                    description: `ManagerDashboard Error: ${error.message}`,
+                    fatal: false
+                });
+            } catch (e) {
+                // Ignorar erros de gtag
+            }
+        }
     }
 
     render() {
@@ -84,8 +104,11 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
         shippedOrders: number;
     } | null>(null);
     const [isLoadingStats, setIsLoadingStats] = useState(false);
+    const [ordersError, setOrdersError] = useState<string | null>(null);
+    const [usersError, setUsersError] = useState<string | null>(null);
     
     useEffect(() => {
+        console.log('[ManagerDashboard] useEffect disparado - view:', view, 'companyId:', companyId);
         // Carregar nome da empresa
         companyService.getCompanyName(companyId).then((name) => {
             console.log('[ManagerDashboard] Nome da empresa carregado:', name, 'para companyId:', companyId);
@@ -205,28 +228,52 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
     }, [companyId]);
 
     const loadUsers = useCallback(async () => {
+        console.log('[ManagerDashboard] loadUsers iniciado - companyId:', companyId);
         setIsLoading(true);
+        setUsersError(null);
         try {
-            console.log('[ManagerDashboard] loadUsers - companyId recebido:', companyId);
-            
+            console.log('[ManagerDashboard] Chamando userService.getUsersByCompany...');
+            const startTime = Date.now();
             const companyUsers = await userService.getUsersByCompany(companyId);
-            console.log('[ManagerDashboard] loadUsers - Total de usuários encontrados:', companyUsers.length);
-            console.log('[ManagerDashboard] loadUsers - Detalhes dos usuários:', companyUsers.map(u => ({
-                email: u.email,
-                firstName: u.firstName,
-                lastName: u.lastName,
-                assignedCompanyId: u.assignedCompanyId,
-                autoDetectedCompanyId: u.autoDetectedCompanyId,
-                totalLogins: u.totalLogins,
-                totalConversations: u.totalConversations,
-                totalTickets: u.totalTickets
-            })));
+            const duration = Date.now() - startTime;
+            
+            console.log('[ManagerDashboard] getUsersByCompany concluído:', {
+                usersCount: companyUsers.length,
+                duration: `${duration}ms`,
+                companyId,
+                timestamp: new Date().toISOString()
+            });
+            
+            if (companyUsers.length > 0) {
+                console.log('[ManagerDashboard] Detalhes dos usuários:', companyUsers.map(u => ({
+                    email: u.email,
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    assignedCompanyId: u.assignedCompanyId,
+                    autoDetectedCompanyId: u.autoDetectedCompanyId,
+                    totalLogins: u.totalLogins,
+                    totalConversations: u.totalConversations,
+                    totalTickets: u.totalTickets
+                })));
+            } else {
+                console.warn('[ManagerDashboard] Nenhum usuário retornado para companyId:', companyId);
+            }
             
             setUsers(companyUsers);
-        } catch (error) {
-            console.error('[ManagerDashboard] Erro ao carregar usuários:', error);
+            setUsersError(null);
+        } catch (error: any) {
+            const errorMessage = error?.message || 'Erro desconhecido ao carregar usuários';
+            console.error('[ManagerDashboard] Erro ao carregar usuários:', {
+                error: errorMessage,
+                stack: error?.stack,
+                companyId,
+                timestamp: new Date().toISOString()
+            });
+            setUsers([]);
+            setUsersError(errorMessage);
         } finally {
             setIsLoading(false);
+            console.log('[ManagerDashboard] loadUsers finalizado');
         }
     }, [companyId]);
 
@@ -321,14 +368,47 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
     };
 
     const loadOrders = useCallback(async () => {
+        console.log('[ManagerDashboard] loadOrders iniciado - companyId:', companyId);
         setIsLoading(true);
+        setOrdersError(null);
         try {
+            console.log('[ManagerDashboard] Chamando supportService.getCompanyOrders...');
+            const startTime = Date.now();
             const companyOrders = await supportService.getCompanyOrders(companyId);
+            const duration = Date.now() - startTime;
+            console.log('[ManagerDashboard] getCompanyOrders concluído:', {
+                ordersCount: companyOrders.length,
+                duration: `${duration}ms`,
+                companyId,
+                timestamp: new Date().toISOString()
+            });
+            
+            if (companyOrders.length > 0) {
+                console.log('[ManagerDashboard] Primeiros pedidos:', companyOrders.slice(0, 3).map(o => ({
+                    id: o.id,
+                    order_number: o.order_number,
+                    status: o.status,
+                    customer_email: o.customer_email || o.shipping_email
+                })));
+            } else {
+                console.warn('[ManagerDashboard] Nenhum pedido retornado para companyId:', companyId);
+            }
+            
             setOrders(companyOrders);
-        } catch (error) {
-            console.error('[ManagerDashboard] Erro ao carregar pedidos:', error);
+            setOrdersError(null);
+        } catch (error: any) {
+            const errorMessage = error?.message || 'Erro desconhecido ao carregar pedidos';
+            console.error('[ManagerDashboard] Erro ao carregar pedidos:', {
+                error: errorMessage,
+                stack: error?.stack,
+                companyId,
+                timestamp: new Date().toISOString()
+            });
+            setOrders([]);
+            setOrdersError(errorMessage);
         } finally {
             setIsLoading(false);
+            console.log('[ManagerDashboard] loadOrders finalizado');
         }
     }, [companyId]);
 
@@ -481,7 +561,21 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                             </div>
                         </div>
 
-                        {isLoading ? (
+                        {ordersError ? (
+                            <Card className="p-12 text-center border-destructive">
+                                <CardContent>
+                                    <p className="text-destructive font-medium mb-2">
+                                        Erro ao carregar pedidos
+                                    </p>
+                                    <p className="text-sm text-muted-foreground mb-4">
+                                        {ordersError}
+                                    </p>
+                                    <Button onClick={loadOrders} variant="outline">
+                                        Tentar Novamente
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        ) : isLoading ? (
                             <Card className="p-12 text-center">
                                 <CardContent>
                                     <span className="loading loading-spinner loading-lg text-primary"></span>
@@ -705,7 +799,21 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
                             </div>
                         </div>
 
-                        {isLoading ? (
+                        {usersError ? (
+                            <Card className="p-12 text-center border-destructive">
+                                <CardContent>
+                                    <p className="text-destructive font-medium mb-2">
+                                        Erro ao carregar usuários
+                                    </p>
+                                    <p className="text-sm text-muted-foreground mb-4">
+                                        {usersError}
+                                    </p>
+                                    <Button onClick={loadUsers} variant="outline">
+                                        Tentar Novamente
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        ) : isLoading ? (
                             <Card className="p-12 text-center">
                                 <CardContent>
                                     <span className="loading loading-spinner loading-lg text-primary"></span>

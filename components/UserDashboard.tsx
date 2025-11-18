@@ -49,19 +49,68 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
     const emailToUse = realClientEmail || user?.email;
     const phoneToUse = user?.phoneNumber;
     
+    console.log('[UserDashboard] loadData iniciado:', {
+      emailToUse,
+      phoneToUse,
+      realClientEmail,
+      userEmail: user?.email,
+      timestamp: new Date().toISOString()
+    });
+    
     if (emailToUse || phoneToUse) {
       setIsLoading(true);
-      const userTickets = await supportService.getTicketsByUser({
-        email: emailToUse,
-        phone: phoneToUse,
-      });
-      const userOrders = await supportService.findOrdersByCustomer({
-        email: emailToUse,
-        phone: phoneToUse
-      });
-      setTickets(userTickets);
-      setOrders(userOrders);
-      setIsLoading(false);
+      try {
+        console.log('[UserDashboard] Buscando tickets e pedidos...');
+        const startTime = Date.now();
+        
+        const [userTickets, userOrders] = await Promise.all([
+          supportService.getTicketsByUser({
+            email: emailToUse,
+            phone: phoneToUse,
+          }),
+          supportService.findOrdersByCustomer({
+            email: emailToUse,
+            phone: phoneToUse
+          })
+        ]);
+        
+        const duration = Date.now() - startTime;
+        console.log('[UserDashboard] Dados carregados:', {
+          ticketsCount: userTickets.length,
+          ordersCount: userOrders.length,
+          duration: `${duration}ms`,
+          timestamp: new Date().toISOString()
+        });
+        
+        if (userOrders.length > 0) {
+          console.log('[UserDashboard] Primeiros pedidos:', userOrders.slice(0, 3).map(o => ({
+            id: o.id,
+            order_number: o.order_number,
+            status: o.status,
+            total_amount: o.total_amount
+          })));
+        } else {
+          console.warn('[UserDashboard] Nenhum pedido encontrado para:', emailToUse || phoneToUse);
+        }
+        
+        setTickets(userTickets);
+        setOrders(userOrders);
+      } catch (error: any) {
+        console.error('[UserDashboard] Erro ao carregar dados:', {
+          error: error?.message || 'Erro desconhecido',
+          stack: error?.stack,
+          emailToUse,
+          phoneToUse,
+          timestamp: new Date().toISOString()
+        });
+        setTickets([]);
+        setOrders([]);
+      } finally {
+        setIsLoading(false);
+        console.log('[UserDashboard] loadData finalizado');
+      }
+    } else {
+      console.warn('[UserDashboard] Nenhum email ou telefone disponível para buscar dados');
     }
   }, [user, realClientEmail]);
 
