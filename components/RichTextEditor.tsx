@@ -45,6 +45,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         heading: {
           levels: [1, 2, 3],
         },
+        // Desabilitar versões internas para evitar duplicatas com as extensões customizadas abaixo
+        underline: false,
+        link: false,
       }),
       Underline,
       Placeholder.configure({

@@ -4,7 +4,7 @@
 
 - **Data:** 30/11/2025  
 - **Cloud Build:** `767e0cdf-8c84-4ceb-bb06-56772a308b90`  
-- **Revisão ativa:** `suporte-lojinha-00033-tlx`  
+- **Revisão ativa:** `suporte-lojinha-00054-ktq`  
 - **Status geral:** ✅ Online e servindo 100% do tráfego
 
 ---

@@ -7,7 +7,7 @@
 
 ## 🎉 O que já está pronto
 
-- Revisão `suporte-lojinha-00033-tlx` servindo 100% do tráfego em produção.  
+- Revisão `suporte-lojinha-00054-ktq` servindo 100% do tráfego em produção.  
 - Novas frentes liberadas: central de notificações, banners/avisos, biblioteca de respostas padrão, escalonamento para gestores, OrderCelebration e cache de pedidos.  
 - Documentação e scripts (`deploy-auto.sh`, `DEPLOY.md`, `CHANGELOG.md`) atualizados para o marco `v2.3.0`.
 

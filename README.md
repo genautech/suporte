@@ -11,6 +11,7 @@ Sistema completo de suporte ao cliente com chatbot inteligente, FAQ, gestão de 
 - 🧠 **Biblioteca de Respostas Padrão** (`AdminDefaultResponses` + `defaultResponseService`) integrada ao aprendizado automático do Gemini.
 - 🚨 **Fluxo de Escalonamento de Gestores** (`managerEscalationService`, `managerNotificationService`, novas abas no ManagerDashboard).
 - 🎉 **Experiência do Gestor** com `OrderCelebration`, cache de pedidos (`orderCacheService`) e preferências (`managerProfileService`).
+- 🔍 **Busca de pedidos unificada**: `findOrdersByCustomer` consulta `customer_email`, `shipping_email` e `customer_phone` individualmente, garantindo que o ManagerDashboard sempre carregue pedidos mesmo quando a Cubbo preenche apenas um dos campos.
 - ⚙️ **Scripts e documentação de deploy** revisados para o pipeline automático (`deploy-auto.sh`) apontando para `https://suporte-lojinha-409489811769.southamerica-east1.run.app`.
 
 ## 🚀 Deploy em Produção

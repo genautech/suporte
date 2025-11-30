@@ -4,7 +4,7 @@
 
 - **Data da revisão:** 30/11/2025  
 - **Serviço:** `suporte-lojinha`  
-- **Revisão Cloud Run:** `suporte-lojinha-00033-tlx` (build `767e0cdf-8c84-4ceb-bb06-56772a308b90`)  
+- **Revisão Cloud Run:** `suporte-lojinha-00054-ktq` (build `767e0cdf-8c84-4ceb-bb06-56772a308b90`)  
 - **URL produção:** https://suporte-lojinha-409489811769.southamerica-east1.run.app  
 - **Status:** ✅ Live e servindo 100% do tráfego
 
@@ -69,6 +69,7 @@
 - `cloudbuild.yaml` continua responsável por injetar `VITE_GEMINI_API_KEY`; documentação reforça uso obrigatório.  
 - `DEPLOY.md`, `DEPLOY_CHECKLIST.md`, `README`, `README_PROXIMOS_PASSOS.md` e `DEPLOY_CONCLUIDO.md` foram atualizados com o fluxo automático.  
 - Novas coleções Firestore documentadas: `supportNotices`, `managerNotifications`, `managerProfiles`, `managerEscalations`, `defaultResponses`, `companyOrdersCache`.
+- `findOrdersByCustomer` passou a executar chamadas independentes para `customer_email`, `shipping_email` e `customer_phone`, deduplicando os resultados antes de exibir no painel do gestor — elimina a janela em branco quando a Cubbo retorna somente um dos campos.
 
 ---
 

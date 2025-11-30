@@ -42,6 +42,7 @@
 - `SupportArea`, `AdminDashboard` e `ManagerDashboard` agora protegidos contra dados `undefined` para evitar que salvamentos Firestore falhem.
 - Ajustes de segurança nos serviços novos garantem `localStorage` isolado por escopo e fallback quando permissões de áudio falham.
 - `deploy-auto.sh` aborta imediatamente se `cloudbuild.yaml` ou `Dockerfile` não estiverem presentes e denuncia URL divergente da esperada.
+- `findOrdersByCustomer` passou a consultar `customer_email` e `shipping_email` (além de `customer_phone`) em chamadas separadas, unificando os resultados para que o painel do gestor sempre liste os pedidos mesmo quando a Cubbo só preenche um dos campos.
 
 ## [v1.8.0] - 2025-01-XX
 

@@ -38,8 +38,7 @@ export const CompanyNoticePanel: React.FC<CompanyNoticePanelProps> = ({ companyI
     return () => unsubscribe();
   }, [companyId]);
 
-  const handleCreateNotice = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleCreateNotice = async () => {
     if (!companyId) return;
     if (!formState.title.trim()) {
       alert('Informe um título para o aviso.');
@@ -94,7 +93,7 @@ export const CompanyNoticePanel: React.FC<CompanyNoticePanelProps> = ({ companyI
       </div>
 
       {isFormOpen && (
-        <form className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4" onSubmit={handleCreateNotice}>
+        <div className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4" role="form" aria-label="Cadastro de aviso rápido">
           <div className="space-y-2">
             <Label htmlFor="company-notice-title">Título</Label>
             <input
@@ -150,11 +149,11 @@ export const CompanyNoticePanel: React.FC<CompanyNoticePanelProps> = ({ companyI
             <Button type="button" variant="ghost" onClick={() => setIsFormOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isSaving}>
+            <Button type="button" disabled={isSaving} onClick={handleCreateNotice}>
               {isSaving ? 'Salvando...' : 'Salvar aviso'}
             </Button>
           </div>
-        </form>
+        </div>
       )}
 
       <div className="space-y-3">

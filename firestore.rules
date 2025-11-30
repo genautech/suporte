@@ -126,6 +126,13 @@ service cloud.firestore {
       // Gestor pode atualizar apenas os campos de contato
       allow update: if isAdmin() || managerCompanyUpdateAllowed(companyId);
     }
+
+    // Support notices - comunicados exibidos na home (antes do login) e na área do cliente
+    // Conteúdo não sensível, então leitura pública é permitida; escrita restrita a admins
+    match /supportNotices/{noticeId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
     
     // User Roles - permitir leitura pública para verificação de role (necessário para login)
     // Admins podem ler/escrever, qualquer usuário autenticado pode ler seu próprio documento

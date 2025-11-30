@@ -1754,54 +1754,43 @@ export const supportService = {
         return [];
     }
     
-    let queryParams: string[] = [];
-    
+    const baseQueryParams: string[] = [];
     if (config.storeId) {
-        queryParams.push(`store_id=${encodeURIComponent(config.storeId)}`);
+        baseQueryParams.push(`store_id=${encodeURIComponent(config.storeId)}`);
     }
-    
-    if (email) {
-        queryParams.push(`shipping_email=${encodeURIComponent(email)}`);
-        queryParams.push(`customer_email=${encodeURIComponent(email)}`);
-    } else if (phone) {
-        queryParams.push(`customer_phone=${phone}`);
-    } else {
-        return [];
-    }
-    
-    queryParams.push(`per_page=100`);
-    queryParams.push(`page=1`);
-    queryParams.push(`sort=desc`);
-    queryParams.push(`sort_by=created_at`);
+    baseQueryParams.push(`per_page=100`);
+    baseQueryParams.push(`page=1`);
+    baseQueryParams.push(`sort=desc`);
+    baseQueryParams.push(`sort_by=created_at`);
 
-    try {
-        const proxyUrl = getProxyUrl();
-        
+    const proxyUrl = getProxyUrl();
+    const fetchOrdersWithParams = async (label: string, extraParams: string[]): Promise<CubboOrder[]> => {
+        const queryParams = [...baseQueryParams, ...extraParams];
         const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
         const requestUrl = `${proxyUrl}/api/orders${queryString}`;
-        console.log(`[findOrdersByCustomer] Fazendo requisição via proxy para: ${requestUrl}`, { 
-            storeId: config.storeId,
+        console.log(`[findOrdersByCustomer][${label}] Fazendo requisição via proxy para: ${requestUrl}`, {
+            storeId: config?.storeId,
             email,
-            phone 
+            phone,
         });
-        
+
         let response: Response;
         try {
             response = await fetch(requestUrl, {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' },
-                mode: 'cors'
+                mode: 'cors',
             });
         } catch (fetchError: any) {
             const errorMessage = fetchError.message || String(fetchError);
-            console.error(`[findOrdersByCustomer] Erro de rede ao fazer fetch:`, fetchError);
-            
+            console.error(`[findOrdersByCustomer][${label}] Erro de rede ao fazer fetch:`, fetchError);
+
             if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('CORS')) {
                 throw new Error(`CORS/Network Error: Não foi possível conectar ao proxy da API Cubbo. URL: ${requestUrl}`);
             }
             throw fetchError;
         }
-        
+
         if (!response.ok) {
             const errorText = await response.text();
             let errorData;
@@ -1810,12 +1799,12 @@ export const supportService = {
             } catch (e) {
                 errorData = { error: errorText };
             }
-            console.error(`API Cubbo retornou status ${response.status}:`, errorData);
-            throw new Error(`Falha ao buscar pedidos: ${response.status} - ${errorData.error || errorData.details || errorText}`);
+            console.error(`[findOrdersByCustomer][${label}] API Cubbo retornou status ${response.status}:`, errorData);
+            throw new Error(`Falha ao buscar pedidos (${label}): ${response.status} - ${errorData.error || errorData.details || errorText}`);
         }
-        
+
         const data = await response.json();
-        console.log('[findOrdersByCustomer] Resposta recebida (raw):', JSON.stringify(data, null, 2));
+        console.log(`[findOrdersByCustomer][${label}] Resposta recebida (raw):`, JSON.stringify(data, null, 2));
         console.log('[findOrdersByCustomer] Tipo da resposta:', typeof data, Array.isArray(data) ? 'Array' : 'Object');
         if (!Array.isArray(data)) {
             console.log('[findOrdersByCustomer] Chaves do objeto:', Object.keys(data));
@@ -1825,7 +1814,7 @@ export const supportService = {
             console.log('[findOrdersByCustomer] data.data:', data.data);
             console.log('[findOrdersByCustomer] data.results:', data.results);
         }
-        
+
         let orders: any[] = [];
         if (Array.isArray(data)) {
             orders = data;
@@ -1837,27 +1826,72 @@ export const supportService = {
                 console.warn('[findOrdersByCustomer] Nenhum pedido encontrado na resposta. Estrutura completa:', JSON.stringify(data, null, 2));
             }
         }
-        
+
         console.log('[findOrdersByCustomer] Pedidos antes da normalização:', orders.length);
         if (orders.length > 0) {
             console.log('[findOrdersByCustomer] Primeiro pedido (raw):', JSON.stringify(orders[0], null, 2));
         }
-        
+
         const normalizedOrders = orders.map(normalizeOrderData);
-        
+
         console.log('[findOrdersByCustomer] Pedidos após normalização:', normalizedOrders.length);
         if (normalizedOrders.length > 0) {
             console.log('[findOrdersByCustomer] Primeiro pedido (normalizado):', JSON.stringify(normalizedOrders[0], null, 2));
         }
 
+        return normalizedOrders;
+    };
+
+    try {
+        const aggregatedOrdersMap = new Map<string, CubboOrder>();
+        const appendOrders = (orders: CubboOrder[]) => {
+            orders.forEach((order) => {
+                const referenceEmail = (order.customer_email || order.shipping_email || email || '').toLowerCase();
+                const key = order.id || `${order.order_number || 'unknown'}-${referenceEmail}`;
+                if (!aggregatedOrdersMap.has(key)) {
+                    aggregatedOrdersMap.set(key, order);
+                }
+            });
+        };
+
+        const extraFetches: Array<Promise<CubboOrder[]>> = [];
+
+        if (email) {
+            extraFetches.push(
+                fetchOrdersWithParams('customer_email', [`customer_email=${encodeURIComponent(email)}`])
+            );
+            extraFetches.push(
+                fetchOrdersWithParams('shipping_email', [`shipping_email=${encodeURIComponent(email)}`])
+            );
+        } else if (phone) {
+            extraFetches.push(
+                fetchOrdersWithParams('customer_phone', [`customer_phone=${encodeURIComponent(phone)}`])
+            );
+        } else {
+            return [];
+        }
+
+        const fetchedOrdersList = await Promise.all(extraFetches.map(async (promise, index) => {
+            try {
+                return await promise;
+            } catch (error) {
+                console.error('[findOrdersByCustomer] Erro ao buscar pedidos (tentativa index:' + index + '):', error);
+                return [];
+            }
+        }));
+
+        fetchedOrdersList.forEach((orders) => appendOrders(orders));
+
+        const aggregatedOrders = Array.from(aggregatedOrdersMap.values());
+
         if (useCache && cacheKey.trim().length > 0) {
           customerOrderMemoryCache.set(cacheKey, {
             expiresAt: now + cacheTtlMs,
-            orders: normalizedOrders,
+            orders: aggregatedOrders,
           });
         }
-        
-        return limit ? normalizedOrders.slice(0, limit) : normalizedOrders;
+
+        return limit ? aggregatedOrders.slice(0, limit) : aggregatedOrders;
     } catch (error: any) {
         const errorMessage = error?.message || String(error);
         console.error("Failed to find orders by customer:", error);
