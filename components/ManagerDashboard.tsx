@@ -277,18 +277,6 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
         }
     }, [companyId]);
 
-    useEffect(() => {
-        if (view === 'tickets') {
-            loadTickets();
-        } else if (view === 'orders') {
-            loadOrders();
-        } else if (view === 'interactions') {
-            loadConversations();
-        } else if (view === 'users') {
-            loadUsers();
-        }
-    }, [view, loadTickets, loadOrders, loadConversations, loadUsers]);
-
     const formatOrderStatus = (status?: string) => {
         switch ((status || '').toLowerCase()) {
             case 'pending':
@@ -411,6 +399,18 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ companyId, onLogout
             console.log('[ManagerDashboard] loadOrders finalizado');
         }
     }, [companyId]);
+
+    useEffect(() => {
+        if (view === 'tickets') {
+            loadTickets();
+        } else if (view === 'orders') {
+            loadOrders();
+        } else if (view === 'interactions') {
+            loadConversations();
+        } else if (view === 'users') {
+            loadUsers();
+        }
+    }, [view, loadTickets, loadOrders, loadConversations, loadUsers]);
 
     const renderView = () => {
         switch (view) {

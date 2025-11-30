@@ -9,7 +9,16 @@
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "backup:local": "bash scripts/backup-local.sh",
+    "backup:remote": "bash scripts/backup-remote.sh",
+    "update:remote": "bash scripts/update-remote.sh",
+    "sync:env": "bash scripts/sync-env.sh",
+    "verificar:ambiente": "bash scripts/verificar-ambiente.sh",
+    "setup": "npm install && bash scripts/sync-env.sh",
+    "build:prod": "npm run build",
+    "preview:prod": "npm run build && npm run preview",
+    "servir:prod": "bash scripts/executar-como-producao.sh"
   },
   "dependencies": {
     "@google/genai": "^1.28.0",

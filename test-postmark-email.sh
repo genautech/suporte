@@ -55,3 +55,5 @@ echo -e "${YELLOW}💡 Verifique a caixa de entrada de ${TEST_EMAIL} (e spam)${N
 
 
 
+
+

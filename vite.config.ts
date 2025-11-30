@@ -10,6 +10,11 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
         strictPort: false, // Se 8080 estiver ocupada, tenta próxima porta disponível
       },
+      preview: {
+        port: 8080,
+        host: '0.0.0.0',
+        strictPort: false,
+      },
       plugins: [react()],
       // Vite expõe variáveis de ambiente automaticamente com prefixo VITE_
       // No Cloud Run, as variáveis devem ter prefixo VITE_ para serem expostas no build

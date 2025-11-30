@@ -754,11 +754,33 @@ export const getGeminiResponse = async (history: Message[], userMessage: string,
     // Adicionar email do usuário ao contexto se disponível
     let userContext = '';
     if (userEmail && userEmail.trim()) {
+        const trimmedEmail = userEmail.trim();
+        const normalizedEmail = trimmedEmail.toLowerCase();
+        const isPrio3Email = normalizedEmail.endsWith('@prio3.com.br');
+
         userContext = `\n\n**CONTEXTO DO USUÁRIO:**
-- Email do usuário logado: ${userEmail.trim()}
+- Email do usuário logado: ${trimmedEmail}
 - SEMPRE use este email ao confirmar ou mencionar o email do usuário
 - NUNCA use placeholders genéricos como "[email]" ou "email@email.com"
 - Este é o email real do usuário que está logado no sistema`;
+
+        if (isPrio3Email) {
+            userContext += `\n\n**INSTRUÇÕES ADICIONAIS PARA CLIENTES COM EMAIL @prio3.com.br:**
+- Estas orientações complementam as regras gerais e não substituem outros aprendizados do chatbot.
+- Considere que é a "primeira interação" quando esta resposta for a primeira do bot na conversa atual (histórico sem mensagens anteriores do bot). Nesta situação, explique SEMPRE de forma calma:
+  * Os pedidos realizados serão atualizados ao longo da semana e também após a Black Friday.
+  * Todas as atualizações são automáticas e podem alterar o prazo previsto devido ao volume da Black Friday.
+  * Os despachos começam a ocorrer a partir de 07/12, portanto qualquer envio antes disso ainda não foi iniciado.
+- Para qualquer pergunta sobre status marcado como "entregue" (ex.: "pedido consta como entregue", "pedido aparece como entregue"):
+  * Deixe claro que o status é uma atualização automática e não significa que o cliente já recebeu o pedido.
+  * Reforce que os pedidos estão sendo atualizados automaticamente, que os prazos podem mudar durante a Black Friday e que os despachos começam após 07/12.
+  * Utilize tom tranquilizador e convide o cliente a acompanhar as próximas atualizações.
+- Para mensagens como "não recebi meu pedido", "pedido não foi despachado", "cadê meu pedido?":
+  * Explique que os pedidos ainda não foram despachados e que os envios iniciam após 07/12.
+  * Informe que as atualizações são automáticas, podem sofrer ajustes de prazo e que o pedido aparecerá na área "Meus pedidos" da loja assim que o despacho for liberado.
+  * Faça uma resposta empática, calma e orientada a tranquilizar o usuário.
+- Sempre que necessário, repita que as informações acima são válidas especificamente para clientes @prio3.com.br durante o período da Black Friday e que todo o restante do suporte funciona normalmente.`;
+        }
     }
     
     const systemInstruction = baseSystemInstruction + faqContext + userContext;
