@@ -748,7 +748,13 @@ Guia prático para identificar o tipo correto baseado no problema mencionado:
   - Use o código exatamente como fornecido pelo cliente, mas apenas uma única vez por menção nas suas respostas
 - Para urgências: EMPATIA + INFORMAÇÕES DE RASTREIO + OFERTA DE CHAMADO`;
 
-export const getGeminiResponse = async (history: Message[], userMessage: string, companyId?: string, userEmail?: string) => {
+export const getGeminiResponse = async (
+    history: Message[], 
+    userMessage: string, 
+    companyId?: string, 
+    userEmail?: string,
+    askedQuestions?: string[] // Perguntas já feitas para evitar repetição
+) => {
     // Verificar se a API está disponível
     if (!ai) {
         console.error("[geminiService] Gemini API não está disponível. Verifique se VITE_GEMINI_API_KEY está configurada.", {
@@ -760,6 +766,20 @@ export const getGeminiResponse = async (history: Message[], userMessage: string,
 
     // Construir contexto do FAQ dinamicamente (otimizado)
     const faqContext = await buildFAQContext(companyId, userEmail);
+    
+    // Adicionar instrução para evitar perguntas repetidas
+    let avoidRepetitionContext = '';
+    if (askedQuestions && askedQuestions.length > 0) {
+        avoidRepetitionContext = `\n\n**IMPORTANTE - EVITAR PERGUNTAS REPETIDAS:**
+As seguintes perguntas já foram feitas anteriormente e não foram respondidas ou não encontraram resposta:
+${askedQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+
+NÃO repita essas perguntas. Se a informação não foi encontrada anteriormente, ofereça alternativas:
+- Solicitar mais detalhes de forma diferente
+- Oferecer abrir um chamado de suporte
+- Sugerir uma abordagem diferente
+- Não faça a mesma pergunta novamente`;
+    }
     
     // Adicionar email do usuário ao contexto se disponível
     let userContext = '';
@@ -793,7 +813,7 @@ export const getGeminiResponse = async (history: Message[], userMessage: string,
         }
     }
     
-    const systemInstruction = baseSystemInstruction + faqContext + userContext;
+    const systemInstruction = baseSystemInstruction + faqContext + userContext + avoidRepetitionContext;
 
     const chatHistory = history
       .filter(m => m.sender !== MessageSender.SYSTEM) // Exclude system messages from history for Gemini

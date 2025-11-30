@@ -47,6 +47,7 @@ export const AdminConversations: React.FC = () => {
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
   const [selectedUserEmails, setSelectedUserEmails] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState<string>('');
   
   // Estatísticas
   const [userStats, setUserStats] = useState({
@@ -479,24 +480,32 @@ export const AdminConversations: React.FC = () => {
       </div>
 
       {/* Filtros e Tabs */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex gap-2">
-          <Button
-            variant={view === 'conversations' ? 'default' : 'outline'}
-            onClick={() => setView('conversations')}
-          >
-            💬 Conversas
-          </Button>
-          <Button
-            variant={view === 'users' ? 'default' : 'outline'}
-            onClick={() => setView('users')}
-          >
-            👥 Usuários
-          </Button>
-        </div>
-        
-        <div className="flex gap-2 flex-wrap">
-          <Select value={filterType} onValueChange={(value) => setFilterType(value as FilterType)}>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex gap-2">
+            <Button
+              variant={view === 'conversations' ? 'default' : 'outline'}
+              onClick={() => setView('conversations')}
+            >
+              💬 Conversas
+            </Button>
+            <Button
+              variant={view === 'users' ? 'default' : 'outline'}
+              onClick={() => setView('users')}
+            >
+              👥 Usuários
+            </Button>
+          </div>
+          
+          <div className="flex gap-2 flex-wrap">
+            <Input
+              type="text"
+              placeholder={view === 'conversations' ? "Buscar por email, pedido, problema..." : "Buscar por email, nome..."}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-64"
+            />
+            <Select value={filterType} onValueChange={(value) => setFilterType(value as FilterType)}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Filtrar por" />
             </SelectTrigger>
@@ -528,6 +537,29 @@ export const AdminConversations: React.FC = () => {
       {view === 'conversations' && (
         <Card>
           <CardContent className="p-0">
+            {/* Filtrar conversas por busca */}
+            {(() => {
+              const filteredConversations = searchQuery.trim()
+                ? conversations.filter(conv => {
+                    const query = searchQuery.toLowerCase().trim();
+                    const searchableText = [
+                      conv.userId || '',
+                      conv.orderNumbers?.join(' ') || '',
+                      conv.messages?.map(m => m.text).join(' ') || '',
+                      conv.id || ''
+                    ].join(' ').toLowerCase();
+                    return searchableText.includes(query);
+                  })
+                : conversations;
+              
+              return filteredConversations.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  {searchQuery.trim() 
+                    ? `Nenhuma conversa encontrada para "${searchQuery}"`
+                    : 'Nenhuma conversa encontrada'}
+                </div>
+              ) : (
+                <>
             {/* Barra de ações quando há seleção */}
             {selectedConversationIds.size > 0 && (
               <div className="p-4 bg-primary/10 border-b flex items-center justify-between">
@@ -588,8 +620,8 @@ export const AdminConversations: React.FC = () => {
                       <th>Ações</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {conversations.map((conv) => (
+                    <tbody>
+                      {filteredConversations.map((conv) => (
                       <tr key={conv.id}>
                         <td>
                           <input
@@ -667,7 +699,22 @@ export const AdminConversations: React.FC = () => {
       )}
 
       {/* Lista de Usuários */}
-      {view === 'users' && (
+      {view === 'users' && (() => {
+        const filteredUsers = searchQuery.trim()
+          ? users.filter(user => {
+              const query = searchQuery.toLowerCase().trim();
+              const searchableText = [
+                user.email || '',
+                user.firstName || '',
+                user.lastName || '',
+                user.phone || '',
+                user.id || ''
+              ].join(' ').toLowerCase();
+              return searchableText.includes(query);
+            })
+          : users;
+        
+        return (
         <Card>
           <CardContent className="p-0">
             {/* Barra de ações quando há seleção */}
@@ -732,8 +779,8 @@ export const AdminConversations: React.FC = () => {
                       <th>Ações</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {users.map((user) => (
+                    <tbody>
+                      {filteredUsers.map((user) => (
                       <tr key={user.id || user.email}>
                         <td>
                           <input

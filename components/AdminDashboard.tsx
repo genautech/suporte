@@ -60,6 +60,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
     const [finalizedCount, setFinalizedCount] = useState<number>(0);
     const [isLoadingNps, setIsLoadingNps] = useState(false);
     const [subjectFilter, setSubjectFilter] = useState<string>('all');
+    const [searchQuery, setSearchQuery] = useState<string>('');
     
     const loadTickets = useCallback(async () => {
         setIsLoading(true);
@@ -173,9 +174,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                     ? tickets 
                     : tickets.filter(t => t.status !== 'arquivado')
                 ).filter(t => {
-                    if (subjectFilter === 'all') return true;
-                    if (subjectFilter === 'pontos') return t.subject === 'pontos';
-                    return t.subject === subjectFilter;
+                    // Filtro por assunto
+                    if (subjectFilter !== 'all' && subjectFilter !== 'pontos' && t.subject !== subjectFilter) {
+                        return false;
+                    }
+                    if (subjectFilter === 'pontos' && t.subject !== 'pontos') {
+                        return false;
+                    }
+                    
+                    // Busca por texto (email, nome, assunto, descrição, número do pedido)
+                    if (searchQuery.trim()) {
+                        const query = searchQuery.toLowerCase().trim();
+                        const searchableText = [
+                            t.email || '',
+                            t.name || '',
+                            t.subject || '',
+                            t.description || '',
+                            t.orderNumber || '',
+                            t.id || ''
+                        ].join(' ').toLowerCase();
+                        
+                        return searchableText.includes(query);
+                    }
+                    
+                    return true;
                 });
                 
                 return (
@@ -241,6 +263,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                                 <p className="text-sm text-gray-600">Gerencie todos os chamados de suporte dos clientes</p>
                             </div>
                             <div className="flex gap-3">
+                                <Input
+                                    type="text"
+                                    placeholder="Buscar por email, nome, assunto, pedido..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-64"
+                                />
                                 <Select value={subjectFilter} onValueChange={setSubjectFilter}>
                                     <SelectTrigger className="w-[180px]">
                                         <SelectValue placeholder="Filtrar por assunto" />

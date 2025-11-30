@@ -164,6 +164,7 @@ export interface Conversation {
     timestamp: number;
   };
   attempts: number; // Contador de tentativas sem resolução
+  askedQuestions?: string[]; // Perguntas feitas pelo bot que não foram respondidas ou não encontraram resposta
   createdAt: number;
   updatedAt: number;
 }

@@ -5,6 +5,7 @@ import { Message, MessageSender, ConversationMessage, CubboOrder } from '../type
 import { getGeminiResponse, searchIntelligentFAQ } from '../services/geminiService';
 import { supportService } from '../services/supportService';
 import { conversationService } from '../services/conversationService';
+import { extractQuestionFromMessage, hasQuestionBeenAsked, addAskedQuestion } from '../services/questionTracker';
 import { companyService } from '../services/companyService';
 import { userService } from '../services/userService';
 import { storageService } from '../services/storageService';
@@ -1126,16 +1127,64 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
         // Passar email do usuário para o Gemini
         const userEmailToPass = user.email && user.email.trim() ? user.email.trim() : undefined;
         
+        // Buscar conversa atual para verificar perguntas já feitas
+        let currentConversation = null;
+        let askedQuestions: string[] = [];
+        if (currentConversationId) {
+            try {
+                currentConversation = await conversationService.getConversationById(currentConversationId);
+                askedQuestions = currentConversation?.askedQuestions || [];
+            } catch (error) {
+                console.error('[Chatbot] Erro ao buscar conversa para verificar perguntas:', error);
+            }
+        }
+        
         const response = await getGeminiResponse(
             enrichedMessages, 
             userMessage + contextInfo,
             companyId,
-            userEmailToPass
+            userEmailToPass,
+            askedQuestions // Passar perguntas já feitas para evitar repetição
         );
         setIsLoading(false);
 
         if (response) {
             await handleFunctionCall(response);
+            
+            // Após processar resposta, verificar se contém pergunta e rastrear
+            // Aguardar um pouco para garantir que a mensagem foi adicionada
+            setTimeout(async () => {
+                try {
+                    if (!currentConversationId) return;
+                    
+                    // Buscar conversa atualizada para pegar última mensagem do bot
+                    const updatedConversation = await conversationService.getConversationById(currentConversationId);
+                    if (!updatedConversation) return;
+                    
+                    const botMessages = updatedConversation.messages.filter(m => m.sender === 'bot');
+                    const lastBotMessage = botMessages[botMessages.length - 1];
+                    
+                    if (lastBotMessage && lastBotMessage.text) {
+                        const questionInResponse = extractQuestionFromMessage(lastBotMessage.text);
+                        
+                        // Se contém pergunta nova, adicionar à lista
+                        if (questionInResponse) {
+                            const currentAskedQuestions = updatedConversation.askedQuestions || [];
+                            
+                            // Verificar se já foi feita antes
+                            if (!hasQuestionBeenAsked(questionInResponse, currentAskedQuestions)) {
+                                const updatedAskedQuestions = addAskedQuestion(questionInResponse, currentAskedQuestions);
+                                await conversationService.updateConversation(currentConversationId, {
+                                    askedQuestions: updatedAskedQuestions
+                                });
+                                console.log('[Chatbot] Pergunta rastreada:', questionInResponse);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('[Chatbot] Erro ao rastrear pergunta:', error);
+                }
+            }, 500);
         } else {
             addMessage('Desculpe, ocorreu um erro. Por favor, tente novamente.', MessageSender.BOT);
             setAttemptsWithoutResolution(prev => prev + 1);
