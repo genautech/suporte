@@ -609,6 +609,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                         Conversas & Usuários
                     </motion.a>
                     <motion.a 
+                        onClick={() => setView('learning')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'learning' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <BrainIcon className="w-4 h-4" />
+                        Aprendizado
+                    </motion.a>
+                    <motion.a 
                         onClick={() => setView('arquivados')} 
                         whileHover={{ x: 4 }}
                         whileTap={{ scale: 0.98 }}
