@@ -139,7 +139,20 @@ export const AdminKnowledgeBase: React.FC<{ companyId?: string }> = ({ companyId
   const handleVerify = async (id: string) => {
     try {
       await knowledgeBaseService.verifyKnowledgeEntry(id);
+      
+      // Quando uma entrada é verificada, ela deve incrementar o aprendizado geral
+      // Importar e chamar o serviço de aprendizado automático
+      try {
+        const { autoLearningService } = await import('../services/autoLearningService');
+        await autoLearningService.learnFromKnowledgeBase(id);
+        console.log('[AdminKnowledgeBase] Entrada verificada e aprendizado atualizado:', id);
+      } catch (learningError) {
+        console.error('[AdminKnowledgeBase] Erro ao atualizar aprendizado (não crítico):', learningError);
+        // Não bloquear a verificação se o aprendizado falhar
+      }
+      
       loadEntries();
+      alert('Entrada verificada com sucesso! Ela agora está disponível no treinamento da IA.');
     } catch (error) {
       console.error('Error verifying knowledge entry:', error);
       alert('Erro ao verificar entrada');
