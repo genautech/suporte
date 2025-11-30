@@ -176,6 +176,60 @@ Use este conhecimento específico do cliente quando relevante para responder per
 };
 
 /**
+ * Otimiza contexto da Base de Conhecimento (Treinamento da IA)
+ */
+export const optimizeKnowledgeBaseContext = async (
+  companyId?: string,
+  maxLength: number = 2000
+): Promise<string> => {
+  try {
+    // Buscar entradas verificadas da base de conhecimento (sempre, não apenas quando há customerEmail)
+    const kbEntries = await knowledgeBaseService.getKnowledgeBaseEntries({
+      companyId,
+      verified: true, // Apenas entradas verificadas
+    });
+    
+    if (kbEntries.length === 0) {
+      return '';
+    }
+
+    // Priorizar entradas mais recentes e relevantes
+    const prioritizedEntries = kbEntries
+      .sort((a, b) => b.updatedAt - a.updatedAt) // Mais recentes primeiro
+      .slice(0, 10); // Top 10 mais recentes
+
+    // Formatar entradas
+    let kbText = prioritizedEntries
+      .map(entry => {
+        // Incluir título, conteúdo e tags se disponíveis
+        const tagsText = entry.tags && entry.tags.length > 0 
+          ? `\nTags: ${entry.tags.join(', ')}` 
+          : '';
+        const categoryText = entry.category 
+          ? `\nCategoria: ${entry.category}` 
+          : '';
+        return `${entry.title}${categoryText}${tagsText}\n${entry.content}`;
+      })
+      .join('\n\n---\n\n');
+
+    // Se muito longo, resumir
+    if (kbText.length > maxLength) {
+      kbText = summarizeText(kbText, maxLength);
+    }
+
+    return `\n\nBASE DE CONHECIMENTO (Treinamento da IA):
+${kbText}
+
+Esta é a base de conhecimento geral do sistema, criada e verificada por administradores.
+Use estas informações como referência principal para responder perguntas dos usuários.
+Sempre priorize este conhecimento sobre outras fontes quando relevante.`;
+  } catch (error) {
+    console.error('[contextOptimizer] Erro ao otimizar base de conhecimento:', error);
+    return '';
+  }
+};
+
+/**
  * Otimiza contexto completo (FAQ + Cliente + Base de Conhecimento)
  */
 export const optimizeFullContext = async (
@@ -185,47 +239,33 @@ export const optimizeFullContext = async (
   try {
     // Calcular tamanhos proporcionais
     const totalMaxLength = MAX_CONTEXT_LENGTH;
-    const faqMaxLength = Math.floor(totalMaxLength * 0.5); // 50% para FAQ
-    const customerMaxLength = Math.floor(totalMaxLength * 0.3); // 30% para cliente
-    const kbMaxLength = Math.floor(totalMaxLength * 0.2); // 20% para base de conhecimento
+    const faqMaxLength = Math.floor(totalMaxLength * 0.35); // 35% para FAQ
+    const customerMaxLength = Math.floor(totalMaxLength * 0.25); // 25% para cliente
+    const kbMaxLength = Math.floor(totalMaxLength * 0.40); // 40% para base de conhecimento (prioridade!)
 
-    const [faqContext, customerContext] = await Promise.all([
+    // Buscar todos os contextos em paralelo
+    const [faqContext, customerContext, kbContext] = await Promise.all([
       optimizeFAQContext(companyId, faqMaxLength),
       optimizeCustomerContext(customerEmail, companyId, customerMaxLength),
+      optimizeKnowledgeBaseContext(companyId, kbMaxLength), // SEMPRE incluir base de conhecimento
     ]);
 
-    // Buscar base de conhecimento se necessário
-    let kbContext = '';
-    if (customerEmail) {
-      try {
-        // Buscar entradas recentes da base de conhecimento
-        const kbEntries = await knowledgeBaseService.getKnowledgeBaseEntries({
-          companyId,
-          verified: true,
-        });
-        
-        if (kbEntries.length > 0) {
-          const kbText = kbEntries
-            .slice(0, 3) // Limitar a 3 entradas
-            .map(entry => `${entry.title}\n${entry.content.substring(0, 200)}...`)
-            .join('\n\n');
-          
-          if (kbText.length <= kbMaxLength) {
-            kbContext = `\n\nBASE DE CONHECIMENTO:\n${kbText}`;
-          }
-        }
-      } catch (error) {
-        console.error('[contextOptimizer] Erro ao buscar base de conhecimento:', error);
-      }
-    }
-
-    // Combinar contextos
-    const fullContext = [faqContext, customerContext, kbContext]
+    // Combinar contextos (Base de Conhecimento sempre primeiro para prioridade)
+    const fullContext = [kbContext, faqContext, customerContext]
       .filter(c => c.length > 0)
       .join('\n');
 
-    // Se ainda muito longo, resumir tudo
+    // Se ainda muito longo, resumir tudo (mas manter Base de Conhecimento)
     if (fullContext.length > MAX_CONTEXT_LENGTH) {
+      // Tentar manter Base de Conhecimento completa e resumir o resto
+      if (kbContext.length > 0) {
+        const remainingLength = MAX_CONTEXT_LENGTH - kbContext.length - 200; // Margem
+        const otherContext = [faqContext, customerContext]
+          .filter(c => c.length > 0)
+          .join('\n');
+        const summarizedOther = summarizeText(otherContext, Math.max(0, remainingLength));
+        return [kbContext, summarizedOther].filter(c => c.length > 0).join('\n');
+      }
       return summarizeText(fullContext, MAX_CONTEXT_LENGTH);
     }
 

@@ -4,7 +4,8 @@
 import { conversationService } from './conversationService';
 import { supportService } from './supportService';
 import { customerKnowledgeService } from './customerKnowledgeService';
-import { Conversation, Ticket } from '../types';
+import { knowledgeBaseService } from './knowledgeBaseService';
+import { Conversation, Ticket, KnowledgeBaseEntry } from '../types';
 
 /**
  * Critérios para identificar interações bem-sucedidas automaticamente
@@ -424,6 +425,36 @@ const processAutoLearning = async (options?: {
 };
 
 /**
+ * Aprende da Base de Conhecimento verificada
+ * Quando uma entrada da Base de Conhecimento é verificada, ela deve ser usada
+ * para enriquecer o aprendizado geral do sistema
+ */
+const learnFromKnowledgeBase = async (entryId: string): Promise<void> => {
+  try {
+    const entry = await knowledgeBaseService.getKnowledgeEntry(entryId);
+    if (!entry || !entry.verified) {
+      return; // Apenas aprender de entradas verificadas
+    }
+
+    // A Base de Conhecimento já está sendo usada no contexto do Gemini
+    // Mas podemos criar uma entrada de conhecimento do cliente genérico
+    // para casos onde não há cliente específico
+    
+    // Nota: A Base de Conhecimento é conhecimento geral, não específico de cliente
+    // Ela já está sendo incluída no contexto do Gemini via optimizeKnowledgeBaseContext
+    // Este método pode ser usado para rastrear quando entradas são verificadas
+    
+    console.log('[autoLearningService] Base de Conhecimento verificada disponível:', {
+      entryId,
+      title: entry.title,
+      category: entry.category,
+    });
+  } catch (error) {
+    console.error('[autoLearningService] Erro ao processar Base de Conhecimento:', error);
+  }
+};
+
+/**
  * Obtém métricas de aprendizado automático
  */
 const getLearningMetrics = async (): Promise<{
@@ -433,6 +464,7 @@ const getLearningMetrics = async (): Promise<{
   totalTickets: number;
   successfulTickets: number;
   learnedFromTickets: number;
+  knowledgeBaseEntries: number; // Entradas verificadas na Base de Conhecimento
   autoLearningRate: number; // % de interações aprendidas automaticamente
 }> => {
   try {
@@ -464,6 +496,15 @@ const getLearningMetrics = async (): Promise<{
     };
   } catch (error) {
     console.error('[autoLearningService] Erro ao obter métricas:', error);
+    // Buscar entradas da Base de Conhecimento
+    let knowledgeBaseEntries = 0;
+    try {
+      const kbEntries = await knowledgeBaseService.getKnowledgeBaseEntries({ verified: true });
+      knowledgeBaseEntries = kbEntries.length;
+    } catch (error) {
+      console.error('[autoLearningService] Erro ao buscar Base de Conhecimento:', error);
+    }
+
     return {
       totalConversations: 0,
       successfulConversations: 0,
@@ -471,6 +512,7 @@ const getLearningMetrics = async (): Promise<{
       totalTickets: 0,
       successfulTickets: 0,
       learnedFromTickets: 0,
+      knowledgeBaseEntries,
       autoLearningRate: 0,
     };
   }
@@ -483,6 +525,7 @@ export const autoLearningService = {
   extractKnowledgeFromTicket,
   learnFromSuccessfulConversations,
   learnFromSuccessfulTickets,
+  learnFromKnowledgeBase,
   processAutoLearning,
   getLearningMetrics,
 };
