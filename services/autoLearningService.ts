@@ -485,6 +485,15 @@ const getLearningMetrics = async (): Promise<{
       ? (successfulInteractions / totalInteractions) * 100 
       : 0;
 
+    // Buscar entradas da Base de Conhecimento verificadas
+    let knowledgeBaseEntries = 0;
+    try {
+      const kbEntries = await knowledgeBaseService.getKnowledgeBaseEntries({ verified: true });
+      knowledgeBaseEntries = kbEntries.length;
+    } catch (error) {
+      console.error('[autoLearningService] Erro ao buscar Base de Conhecimento:', error);
+    }
+
     return {
       totalConversations: conversations.length,
       successfulConversations,
@@ -492,6 +501,7 @@ const getLearningMetrics = async (): Promise<{
       totalTickets: resolvedTickets.length,
       successfulTickets,
       learnedFromTickets: 0, // TODO: Buscar do customerKnowledge
+      knowledgeBaseEntries,
       autoLearningRate: Math.round(autoLearningRate * 10) / 10,
     };
   } catch (error) {
