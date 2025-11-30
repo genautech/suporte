@@ -1034,7 +1034,7 @@ Responda APENAS com o JSON, sem texto adicional.`;
             model: "gemini-2.0-flash-exp",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
         });
-        const text = response.text();
+        const text = response.text;
 
         // Tentar extrair JSON da resposta
         let insights: ConversationAIInsights;
