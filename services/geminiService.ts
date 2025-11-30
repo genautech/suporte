@@ -101,9 +101,19 @@ const tools: FunctionDeclaration[] = [
   }
 ];
 
-// Função auxiliar para construir contexto do FAQ
-const buildFAQContext = async (companyId?: string): Promise<string> => {
+// Função auxiliar para construir contexto do FAQ (otimizado)
+const buildFAQContext = async (companyId?: string, userEmail?: string): Promise<string> => {
   try {
+    // Usar otimizador de contexto se disponível
+    try {
+      const { optimizeFullContext } = await import('./contextOptimizer');
+      return await optimizeFullContext(userEmail, companyId);
+    } catch (importError) {
+      // Fallback para método antigo se otimizador não disponível
+      console.warn('[geminiService] Context optimizer não disponível, usando método padrão');
+    }
+
+    // Método padrão (fallback)
     const faqs = await faqService.getFAQEntries(undefined, companyId);
     let faqText = '';
     
@@ -748,8 +758,8 @@ export const getGeminiResponse = async (history: Message[], userMessage: string,
         return null;
     }
 
-    // Construir contexto do FAQ dinamicamente
-    const faqContext = await buildFAQContext(companyId);
+    // Construir contexto do FAQ dinamicamente (otimizado)
+    const faqContext = await buildFAQContext(companyId, userEmail);
     
     // Adicionar email do usuário ao contexto se disponível
     let userContext = '';

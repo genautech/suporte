@@ -821,6 +821,44 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
             console.error('[Chatbot] Erro ao salvar conversa (não crítico):', err);
         });
         
+        // Aprendizado automático após conversa bem-sucedida (não bloqueante)
+        if (orderFound || ticketOpened) {
+            // Processar aprendizado automático em background
+            Promise.all([
+                import('../services/autoLearningService'),
+                import('../services/customerKnowledgeService')
+            ]).then(([{ autoLearningService }, { customerKnowledgeService }]) => {
+                if (currentConversationId) {
+                    // Verificar se conversa é bem-sucedida e aprender automaticamente
+                    conversationService.getConversationById(currentConversationId)
+                        .then(conversation => {
+                            if (conversation && autoLearningService.isSuccessfulConversation(conversation)) {
+                                const knowledge = autoLearningService.extractKnowledgeFromConversation(conversation);
+                                if (knowledge && knowledge.confidence >= 0.6) {
+                                    customerKnowledgeService.addKnowledgeEntry(
+                                        user.email,
+                                        {
+                                            content: `P: ${knowledge.question}\nR: ${knowledge.answer}`,
+                                            source: 'conversation',
+                                            sourceId: currentConversationId,
+                                            tags: ['auto_learning', `confidence_${Math.round(knowledge.confidence * 10)}`],
+                                        },
+                                        companyId
+                                    ).catch(err => {
+                                        console.error('[Chatbot] Erro no aprendizado automático (não crítico):', err);
+                                    });
+                                }
+                            }
+                        })
+                        .catch(err => {
+                            console.error('[Chatbot] Erro ao verificar conversa para aprendizado (não crítico):', err);
+                        });
+                }
+            }).catch(err => {
+                console.error('[Chatbot] Erro ao importar serviços de aprendizado (não crítico):', err);
+            });
+        }
+        
         // Sugerir abertura de chamado após 3 tentativas sem resolução
         if (attemptsWithoutResolution >= 3 && !ticketOpened) {
             const timeoutId = setTimeout(() => {

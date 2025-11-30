@@ -10,6 +10,7 @@ import { AdminFAQ } from './AdminFAQ';
 import { AdminKnowledgeBase } from './AdminKnowledgeBase';
 import { AdminCompanies } from './AdminCompanies';
 import { AdminConversations } from './AdminConversations';
+import { AdminLearningMetrics } from './AdminLearningMetrics';
 import { companyService } from '../services/companyService';
 import { conversationService } from '../services/conversationService';
 import { Company } from '../types';
@@ -29,7 +30,7 @@ import {
 } from './ui/select';
 import { motion } from 'framer-motion';
 
-type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados' | 'companies' | 'conversations';
+type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados' | 'companies' | 'conversations' | 'learning';
 
 interface AdminDashboardProps {
     onLogout: () => void;
@@ -467,6 +468,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 return <AdminCompanies />;
             case 'conversations':
                 return <AdminConversations />;
+            case 'learning':
+                return <AdminLearningMetrics />;
             case 'chatbot': // New view for chatbot testing
                 return (
                      <div className="animate-fade-in h-full flex flex-col items-center justify-center">
