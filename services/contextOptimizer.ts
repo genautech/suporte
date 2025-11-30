@@ -198,14 +198,14 @@ export const optimizeFullContext = async (
     let kbContext = '';
     if (customerEmail) {
       try {
-        const kbResult = await knowledgeBaseService.searchKnowledgeBase(
-          '', // Busca vazia retorna entradas recentes
-          false,
-          companyId
-        );
+        // Buscar entradas recentes da base de conhecimento
+        const kbEntries = await knowledgeBaseService.getKnowledgeBaseEntries({
+          companyId,
+          verified: true,
+        });
         
-        if (kbResult.sources.length > 0) {
-          const kbText = kbResult.sources
+        if (kbEntries.length > 0) {
+          const kbText = kbEntries
             .slice(0, 3) // Limitar a 3 entradas
             .map(entry => `${entry.title}\n${entry.content.substring(0, 200)}...`)
             .join('\n\n');
