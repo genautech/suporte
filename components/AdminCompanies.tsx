@@ -10,6 +10,7 @@ import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
 import { Trash2, Edit, Plus, Building2, Eye, EyeOff } from 'lucide-react';
+import { CompanyNoticePanel } from './CompanyNoticePanel';
 
 export const AdminCompanies: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -430,6 +431,10 @@ export const AdminCompanies: React.FC = () => {
               <p className="text-xs text-muted-foreground">
                 O gestor poderá visualizar e gerenciar tickets, FAQ e base de conhecimento da empresa
               </p>
+            </div>
+
+            <div className="border-t pt-4">
+              <CompanyNoticePanel companyId={editingCompany?.id} companyName={editingCompany?.name} />
             </div>
 
             <div className="flex justify-end gap-2 pt-4">

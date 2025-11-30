@@ -746,7 +746,16 @@ Guia prático para identificar o tipo correto baseado no problema mencionado:
   - O caractere "#" no início é opcional e NÃO indica duplicação - "#R662852856" é um código válido e único
   - Números puros NUNCA são duplicações - sempre aceite números como códigos válidos quando fornecidos uma vez
   - Use o código exatamente como fornecido pelo cliente, mas apenas uma única vez por menção nas suas respostas
-- Para urgências: EMPATIA + INFORMAÇÕES DE RASTREIO + OFERTA DE CHAMADO`;
+- Para urgências: EMPATIA + INFORMAÇÕES DE RASTREIO + OFERTA DE CHAMADO
+
+**PRIVACIDADE CRÍTICA:**
+- NUNCA mencione dados de outros clientes (emails, pedidos, nomes, situações específicas)
+- Use APENAS dados do cliente atual (email, pedidos do cliente atual) ou informações genéricas
+- Se não tiver certeza sobre dados do cliente, use resposta genérica ou peça mais informações
+- NUNCA use informações de pedidos de outros clientes para responder perguntas
+- NUNCA mencione situações específicas de outros clientes
+- Se a resposta padrão for genérica e não mencionar dados específicos, use-a quando apropriado
+- Sempre valide que está usando dados corretos do cliente atual antes de mencionar`;
 
 export const getGeminiResponse = async (
     history: Message[], 

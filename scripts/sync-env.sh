@@ -54,3 +54,5 @@ echo "✅ Sincronização concluída!"
 echo "📋 Variáveis configuradas:"
 grep -E "^VITE_" "$ENV_LOCAL" | sed 's/=.*/=***/' || echo "  Nenhuma variável VITE_ encontrada"
 
+
+

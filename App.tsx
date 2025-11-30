@@ -1,5 +1,5 @@
 // Fix: Implement the main App component to handle views.
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useMemo } from 'react';
 import { HomePage } from './components/HomePage';
 import { UserLogin } from './components/UserLogin';
 import { AdminLogin } from './components/AdminLogin';
@@ -11,6 +11,8 @@ import { AdminClientView } from './components/AdminClientView';
 import { Toaster } from './components/ui/toaster';
 import { storeContext } from './lib/storeContext';
 import { getManagerCompany, getUserRole } from './services/authService';
+import { NotificationCenterProvider } from './components/NotificationCenterProvider';
+import { NotificationScope } from './services/notificationService';
 
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 const ManagerDashboard = lazy(() => import('./components/ManagerDashboard'));
@@ -30,97 +32,137 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // Detectar rota da URL (suporte incremental para /admin e /manager)
-        storeContext.detectAndStoreContext();
-        const pathname = window.location.pathname;
-        if (pathname === '/admin') {
-            setView('adminLogin');
-            setEntryPoint('adminLogin');
-        } else if (pathname === '/manager') {
-            setView('managerLogin');
-            setEntryPoint('managerLogin');
-        } else {
-            setView('home');
-            setEntryPoint('home');
-        }
-        
-        // Monitor authentication state changes
-        // Adicionar timeout para evitar loading infinito em caso de erro
-        const timeoutId = setTimeout(() => {
-            setIsLoading(false);
-        }, 10000); // 10 segundos de timeout
+        try {
+            // Detectar rota da URL (suporte incremental para /admin e /manager)
+            storeContext.detectAndStoreContext();
+            const pathname = window.location.pathname;
+            if (pathname === '/admin') {
+                setView('adminLogin');
+                setEntryPoint('adminLogin');
+            } else if (pathname === '/manager') {
+                setView('managerLogin');
+                setEntryPoint('managerLogin');
+            } else {
+                setView('home');
+                setEntryPoint('home');
+            }
+            
+            // Monitor authentication state changes
+            // Adicionar timeout para evitar loading infinito em caso de erro
+            const timeoutId = setTimeout(() => {
+                setIsLoading(false);
+            }, 10000); // 10 segundos de timeout
 
-        const unsubscribe = onAuthStateChanged(
-            auth, 
-            (user) => {
+            let unsubscribe: (() => void) | null = null;
+            
+            try {
+                unsubscribe = onAuthStateChanged(
+                    auth, 
+                    (user) => {
+                        try {
+                            clearTimeout(timeoutId);
+                            setCurrentUser(user);
+                            if (user?.email) {
+                                setIsLoading(true);
+                                resolveUserRole(user.email)
+                                    .catch((error) => {
+                                        console.error('[App] Erro ao resolver role do usuário:', error);
+                                        setIsAdmin(false);
+                                        setIsManager(false);
+                                        setManagerCompanyId(null);
+                                    })
+                                    .finally(() => setIsLoading(false));
+                            } else {
+                                setIsAdmin(false);
+                                setIsManager(false);
+                                setManagerCompanyId(null);
+                                setIsLoading(false);
+                            }
+                        } catch (error) {
+                            console.error('[App] Erro no callback de autenticação:', error);
+                            setIsLoading(false);
+                        }
+                    },
+                    (error) => {
+                        clearTimeout(timeoutId);
+                        console.error('[App] Erro ao verificar autenticação:', error);
+                        setIsLoading(false);
+                    }
+                );
+            } catch (error) {
+                console.error('[App] Erro ao configurar onAuthStateChanged:', error);
                 clearTimeout(timeoutId);
-                setCurrentUser(user);
-                if (user?.email) {
-                    setIsLoading(true);
-                    resolveUserRole(user.email)
-                        .catch((error) => {
-                            console.error('[App] Erro ao resolver role do usuário:', error);
-                            setIsAdmin(false);
-                            setIsManager(false);
-                            setManagerCompanyId(null);
-                        })
-                        .finally(() => setIsLoading(false));
-                } else {
-                    setIsAdmin(false);
-                    setIsManager(false);
-                    setManagerCompanyId(null);
-                    setIsLoading(false);
-                }
-            },
-            (error) => {
-                clearTimeout(timeoutId);
-                console.error('[App] Erro ao verificar autenticação:', error);
                 setIsLoading(false);
             }
-        );
 
-        return () => {
-            clearTimeout(timeoutId);
-            unsubscribe();
-        };
+            return () => {
+                clearTimeout(timeoutId);
+                if (unsubscribe) {
+                    try {
+                        unsubscribe();
+                    } catch (error) {
+                        console.error('[App] Erro ao fazer unsubscribe:', error);
+                    }
+                }
+            };
+        } catch (error) {
+            console.error('[App] Erro crítico no useEffect:', error);
+            setIsLoading(false);
+        }
     }, []); // Array vazio - executar apenas uma vez
 
     const resolveUserRole = async (email: string) => {
-        const role = await getUserRole(email);
-        const storedCompanyId = storeContext.getStoredCompanyId();
-        const forceManager = entryPoint === 'managerLogin' || (typeof window !== 'undefined' && window.location.pathname === '/manager');
-        const applyManagerSession = (companyId: string) => {
-            setManagerCompanyId(companyId);
-            storeContext.setStoredCompanyId(companyId);
-            setIsManager(true);
-            setIsAdmin(false);
-        };
-        if (role === 'admin') {
-            setIsAdmin(true);
-            setIsManager(false);
-            setManagerCompanyId(null);
-        } else if (role === 'manager') {
-            let companyId = await getManagerCompany(email);
-            if (!companyId && storedCompanyId) {
-                console.warn('[App] getManagerCompany retornou vazio, usando companyId armazenado localmente');
-                companyId = storedCompanyId;
-            }
-            if (companyId) {
-                applyManagerSession(companyId);
-            } else {
-                console.warn('[App] Usuário manager sem companyId associado:', email);
+        try {
+            const role = await getUserRole(email);
+            const storedCompanyId = storeContext.getStoredCompanyId();
+            const storedManagerEmail = storeContext.getStoredManagerEmail();
+            const forceManager = entryPoint === 'managerLogin' || (typeof window !== 'undefined' && window.location.pathname === '/manager');
+            const applyManagerSession = (companyId: string) => {
+                setManagerCompanyId(companyId);
+                storeContext.setStoredCompanyId(companyId);
+                storeContext.setStoredManagerEmail(email);
+                setIsManager(true);
+                setIsAdmin(false);
+            };
+            if (role === 'admin') {
+                setIsAdmin(true);
                 setIsManager(false);
                 setManagerCompanyId(null);
+            } else if (role === 'manager') {
+                let companyId = await getManagerCompany(email);
+                if (!companyId && storedCompanyId) {
+                    console.warn('[App] getManagerCompany retornou vazio, usando companyId armazenado localmente');
+                    companyId = storedCompanyId;
+                }
+                if (companyId) {
+                    applyManagerSession(companyId);
+                } else {
+                    console.warn('[App] Usuário manager sem companyId associado:', email);
+                    setIsManager(false);
+                    setManagerCompanyId(null);
+                    storeContext.setStoredCompanyId(null);
+                    storeContext.setStoredManagerEmail(null);
+                }
+            } else {
+                if (forceManager && storedCompanyId && storedManagerEmail === email) {
+                    console.warn('[App] Aplicando modo gestor baseado no entry point e companyId armazenado.');
+                    applyManagerSession(storedCompanyId);
+                    return;
+                }
+                setIsAdmin(false);
+                setIsManager(false);
+                setManagerCompanyId(null);
+                storeContext.setStoredCompanyId(null);
+                storeContext.setStoredManagerEmail(null);
             }
-        } else {
-            if (forceManager && storedCompanyId) {
-                console.warn('[App] Aplicando modo gestor baseado no entry point e companyId armazenado.');
-                applyManagerSession(storedCompanyId);
-                return;
-            }
+        } catch (error) {
+            console.error('[App] Erro ao resolver role do usuário:', error);
             setIsAdmin(false);
             setIsManager(false);
             setManagerCompanyId(null);
+            storeContext.setStoredCompanyId(null);
+            storeContext.setStoredManagerEmail(null);
+            throw error; // Re-throw para ser capturado pelo catch no useEffect
         }
     };
 
@@ -138,6 +180,7 @@ const App: React.FC = () => {
         setIsAdmin(false);
         setManagerCompanyId(companyId);
         storeContext.setStoredCompanyId(companyId);
+        storeContext.setStoredManagerEmail(auth.currentUser?.email || null);
     };
     
     const handleLogout = () => {
@@ -146,6 +189,7 @@ const App: React.FC = () => {
             setIsManager(false);
             setManagerCompanyId(null);
             storeContext.setStoredCompanyId(null);
+            storeContext.setStoredManagerEmail(null);
             setEntryPoint('home');
             setAdminViewMode('admin');
             setView('home');
@@ -160,6 +204,19 @@ const App: React.FC = () => {
         setAdminViewMode(mode);
         setAdminSelectedCompanyId(companyId);
     };
+
+    const notificationScope: NotificationScope | null = useMemo(() => {
+        if (isAdmin) {
+            return { role: 'admin' };
+        }
+        if (isManager && managerCompanyId) {
+            return { role: 'manager', companyId: managerCompanyId };
+        }
+        if (currentUser?.email) {
+            return { role: 'user', email: currentUser.email };
+        }
+        return null;
+    }, [isAdmin, isManager, managerCompanyId, currentUser]);
 
     if (isLoading) {
         return (
@@ -218,10 +275,12 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="App">
-            {renderView()}
-            <Toaster />
-        </div>
+        <NotificationCenterProvider scope={notificationScope}>
+            <div className="App">
+                {renderView()}
+                <Toaster />
+            </div>
+        </NotificationCenterProvider>
     );
 };
 

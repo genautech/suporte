@@ -528,6 +528,40 @@ const getLearningMetrics = async (): Promise<{
   }
 };
 
+/**
+ * Aprende de respostas padrão quando usadas com sucesso
+ */
+const learnFromDefaultResponse = async (
+  responseId: string,
+  companyId: string,
+  wasSuccessful: boolean = true
+): Promise<void> => {
+  if (!wasSuccessful) {
+    return;
+  }
+
+  try {
+    const { defaultResponseService } = await import('./defaultResponseService');
+    const response = await defaultResponseService.getDefaultResponse(responseId);
+    
+    if (!response || !response.includeInAutoLearning) {
+      return; // Apenas aprender se marcado para aprendizado automático
+    }
+
+    // Adicionar ao customerKnowledge como conhecimento genérico da empresa
+    // Nota: Isso requer uma forma de armazenar conhecimento genérico por empresa
+    // Por enquanto, podemos adicionar à Base de Conhecimento se não existir
+    
+    console.log('[autoLearningService] Resposta padrão usada com sucesso:', {
+      responseId,
+      question: response.question,
+      companyId,
+    });
+  } catch (error) {
+    console.error('[autoLearningService] Erro ao processar resposta padrão:', error);
+  }
+};
+
 export const autoLearningService = {
   isSuccessfulConversation,
   isSuccessfulTicket,
@@ -536,6 +570,7 @@ export const autoLearningService = {
   learnFromSuccessfulConversations,
   learnFromSuccessfulTickets,
   learnFromKnowledgeBase,
+  learnFromDefaultResponse,
   processAutoLearning,
   getLearningMetrics,
 };

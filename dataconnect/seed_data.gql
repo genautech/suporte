@@ -1,0 +1,82 @@
+mutation SeedData @transaction @auth(level: USER) {
+  user_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      createdAt: "2024-04-26T12:00:00Z",
+      displayName: "John Doe",
+      email: "john.doe@example.com",
+      userType: "customer"
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      createdAt: "2024-04-26T13:00:00Z",
+      displayName: "Jane Smith",
+      email: "jane.smith@example.com",
+      userType: "customer"
+    }
+  ])
+  agent_insertMany(data: [
+    {
+      id: "650e8400-e29b-41d4-a716-446655440000",
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      availabilityStatus: "available",
+      createdAt: "2024-04-26T12:30:00Z",
+      skills: ["support", "sales"]
+    },
+    {
+      id: "650e8400-e29b-41d4-a716-446655440001",
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      availabilityStatus: "unavailable",
+      createdAt: "2024-04-26T13:30:00Z",
+      skills: ["technical", "customer service"]
+    }
+  ])
+  conversation_insertMany(data: [
+    {
+      id: "750e8400-e29b-41d4-a716-446655440000",
+      agentId: "650e8400-e29b-41d4-a716-446655440000",
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      createdAt: "2024-04-26T12:45:00Z",
+      status: "open"
+    },
+    {
+      id: "750e8400-e29b-41d4-a716-446655440001",
+      agentId: "650e8400-e29b-41d4-a716-446655440001",
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      createdAt: "2024-04-26T13:45:00Z",
+      status: "closed"
+    }
+  ])
+  message_insertMany(data: [
+    {
+      id: "850e8400-e29b-41d4-a716-446655440000",
+      conversationId: "750e8400-e29b-41d4-a716-446655440000",
+      senderId: "550e8400-e29b-41d4-a716-446655440000",
+      createdAt: "2024-04-26T12:50:00Z",
+      senderType: "customer",
+      text: "Hello, I need help with my order."
+    },
+    {
+      id: "850e8400-e29b-41d4-a716-446655440001",
+      conversationId: "750e8400-e29b-41d4-a716-446655440001",
+      senderId: "650e8400-e29b-41d4-a716-446655440001",
+      createdAt: "2024-04-26T13:50:00Z",
+      senderType: "agent",
+      text: "Thank you for contacting support."
+    }
+  ])
+  fAQ_insertMany(data: [
+    {
+      id: "950e8400-e29b-41d4-a716-446655440000",
+      question: "How do I reset my password?",
+      answer: "Go to the login page and click on 'Forgot Password'.",
+      createdAt: "2024-04-26T12:00:00Z"
+    },
+    {
+      id: "950e8400-e29b-41d4-a716-446655440001",
+      question: "What are the shipping costs?",
+      answer: "Shipping costs vary depending on your location.",
+      createdAt: "2024-04-26T13:00:00Z"
+    }
+  ])
+}

@@ -27,18 +27,30 @@ test.describe('Manager Dashboard', () => {
     // Aguardar redirecionamento para o dashboard ou verificar se ainda está na página de login
     await page.waitForTimeout(3000);
     
-    // Verificar se o dashboard carregou (verificar por elementos específicos do dashboard)
-    const dashboardLoaded = await Promise.race([
-      page.locator('text=Chamados').waitFor({ state: 'visible', timeout: 10000 }).then(() => true),
-      page.locator('text=Pedidos').waitFor({ state: 'visible', timeout: 10000 }).then(() => true),
-      page.locator('text=Tickets').waitFor({ state: 'visible', timeout: 10000 }).then(() => true),
-      page.locator('h2:has-text("Painel do Gestor")').waitFor({ state: 'visible', timeout: 10000 }).then(() => true)
-    ]).catch(() => false);
+    // Verificar se o dashboard carregou (elementos específicos da visão geral)
+    const dashboardLoaded = await page
+      .locator('text=Dashboard do Gestor')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
     
     expect(dashboardLoaded).toBe(true);
   });
 
   test('should display orders tab and load orders', async ({ page }) => {
+    const consoleLogs: string[] = [];
+    page.on('console', msg => {
+      const text = msg.text();
+      if (
+        text.includes('findOrdersByCustomer') ||
+        text.includes('getCompanyOrders') ||
+        text.includes('Domínios permitidos definidos')
+      ) {
+        consoleLogs.push(text);
+      }
+    });
+
     // Login
     await page.fill('input[type="email"]', MANAGER_EMAIL);
     await page.fill('input[type="password"]', MANAGER_PASSWORD);
@@ -46,11 +58,12 @@ test.describe('Manager Dashboard', () => {
     
     // Aguardar dashboard carregar
     await page.waitForTimeout(3000);
-    const dashboardLoaded = await Promise.race([
-      page.locator('text=Chamados').waitFor({ state: 'visible', timeout: 10000 }).then(() => true),
-      page.locator('text=Pedidos').waitFor({ state: 'visible', timeout: 10000 }).then(() => true),
-      page.locator('h2:has-text("Painel do Gestor")').waitFor({ state: 'visible', timeout: 10000 }).then(() => true)
-    ]).catch(() => false);
+    const dashboardLoaded = await page
+      .locator('text=Dashboard do Gestor')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
     
     expect(dashboardLoaded).toBe(true);
     
@@ -74,56 +87,58 @@ test.describe('Manager Dashboard', () => {
       errorState.waitFor({ state: 'visible', timeout: 30000 })
     ]);
     
-    // Verificar logs no console para chamadas à API
-    const consoleLogs: string[] = [];
-    page.on('console', msg => {
-      if (msg.text().includes('findOrdersByCustomer') || msg.text().includes('getCompanyOrders')) {
-        consoleLogs.push(msg.text());
-      }
-    });
-    
     // Aguardar um pouco para capturar logs
     await page.waitForTimeout(2000);
     
     // Verificar se há pelo menos um log de chamada à API (mesmo que não tenha pedidos)
     expect(consoleLogs.length).toBeGreaterThan(0);
+
+    // Garantir que o log de domínio permitido foi registrado
+    const hasDomainLog = consoleLogs.some(log => log.includes('Domínios permitidos definidos') || log.includes('allowedDomains'));
+    expect(hasDomainLog).toBe(true);
   });
 
-  test('should display users tab and load users', async ({ page }) => {
-    // Login
+  test('should show order filters and escalation action', async ({ page }) => {
     await page.fill('input[type="email"]', MANAGER_EMAIL);
     await page.fill('input[type="password"]', MANAGER_PASSWORD);
     await page.click('button[type="submit"]');
-    
-    // Aguardar dashboard carregar
+
     await page.waitForTimeout(3000);
-    const dashboardLoaded = await Promise.race([
-      page.locator('text=Chamados').waitFor({ state: 'visible', timeout: 10000 }).then(() => true),
-      page.locator('text=Usuários').waitFor({ state: 'visible', timeout: 10000 }).then(() => true),
-      page.locator('h2:has-text("Painel do Gestor")').waitFor({ state: 'visible', timeout: 10000 }).then(() => true)
-    ]).catch(() => false);
-    
-    expect(dashboardLoaded).toBe(true);
-    
-    // Clicar na aba de usuários
-    await page.click('text=Usuários', { timeout: 10000 });
-    
-    // Verificar se a aba de usuários está visível
-    await expect(page.locator('text=Usuários da Empresa')).toBeVisible({ timeout: 10000 });
-    
-    // Verificar se há indicador de loading ou lista de usuários
-    const loadingIndicator = page.locator('text=Carregando usuários');
-    const usersList = page.locator('table');
-    const emptyState = page.locator('text=Nenhum usuário encontrado');
-    const errorState = page.locator('text=Erro ao carregar usuários');
-    
-    // Aguardar um dos estados aparecer
-    await Promise.race([
-      loadingIndicator.waitFor({ state: 'visible', timeout: 5000 }).then(() => loadingIndicator.waitFor({ state: 'hidden', timeout: 30000 })),
-      usersList.first().waitFor({ state: 'visible', timeout: 30000 }),
-      emptyState.waitFor({ state: 'visible', timeout: 30000 }),
-      errorState.waitFor({ state: 'visible', timeout: 30000 })
-    ]);
+    await page.click('text=Pedidos', { timeout: 10000 });
+
+    await expect(page.locator('button:has-text("Todos os status")').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('input[placeholder="Buscar por pedido, cliente ou email"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button:has-text("Atualizar")').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button:has-text("Primeira")').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button:has-text("Última")').first()).toBeVisible({ timeout: 10000 });
+
+    const escalateButton = page.locator('button:has-text("Abrir chamado")').first();
+    await expect(escalateButton).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should open profile and escalations tabs', async ({ page }) => {
+    await page.fill('input[type="email"]', MANAGER_EMAIL);
+    await page.fill('input[type="password"]', MANAGER_PASSWORD);
+    await page.click('button[type="submit"]');
+
+    await page.waitForTimeout(3000);
+
+    await page.click('text=Perfil do Gestor', { timeout: 10000 });
+    await expect(page.locator('text=Perfil do Gestor').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('input#manager-name')).toBeVisible({ timeout: 10000 });
+
+    await page.click('text=Chamados do Gestor', { timeout: 10000 });
+    await expect(page.locator('text=Chamados do Gestor').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button:has-text("Atualizar")').first()).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should keep dashboard focused and hide users tab', async ({ page }) => {
+    await page.fill('input[type="email"]', MANAGER_EMAIL);
+    await page.fill('input[type="password"]', MANAGER_PASSWORD);
+    await page.click('button[type="submit"]');
+
+    await expect(page.locator('text=Dashboard do Gestor').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('text=Usuários')).toHaveCount(0);
   });
 
   test('should verify Cubbo API calls', async ({ page }) => {
@@ -144,11 +159,12 @@ test.describe('Manager Dashboard', () => {
     
     // Aguardar dashboard carregar
     await page.waitForTimeout(3000);
-    const dashboardLoaded = await Promise.race([
-      page.locator('text=Chamados').waitFor({ state: 'visible', timeout: 10000 }).then(() => true),
-      page.locator('text=Pedidos').waitFor({ state: 'visible', timeout: 10000 }).then(() => true),
-      page.locator('h2:has-text("Painel do Gestor")').waitFor({ state: 'visible', timeout: 10000 }).then(() => true)
-    ]).catch(() => false);
+    const dashboardLoaded = await page
+      .locator('text=Dashboard do Gestor')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
     
     expect(dashboardLoaded).toBe(true);
     

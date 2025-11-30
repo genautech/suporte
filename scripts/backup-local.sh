@@ -65,3 +65,5 @@ rm -rf "backup_$TIMESTAMP"
 echo "✅ Backup concluído: backup_$TIMESTAMP.tar.gz"
 echo "📊 Tamanho: $(du -h "backup_$TIMESTAMP.tar.gz" | cut -f1)"
 
+
+

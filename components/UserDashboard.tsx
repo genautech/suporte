@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { User } from 'firebase/auth';
-import { Ticket, CubboOrder } from '../types';
+import { Ticket, CubboOrder, NotificationItem } from '../types';
 import { supportService } from '../services/supportService';
 import { companyService } from '../services/companyService';
 import { userService } from '../services/userService';
-import { SupportArea } from './SupportArea';
+import { SupportArea, SupportTab } from './SupportArea';
 import { TicketDetailModal } from './TicketDetailModal';
 import { ProfileModal } from './ProfileModal';
 import { Chatbot } from './Chatbot';
@@ -20,6 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import { DashboardHeader } from './DashboardHeader';
 
 interface UserDashboardProps {
   user: User;
@@ -43,6 +44,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
   const [storeUrl, setStoreUrl] = useState<string | null>(null);
   const [detectedCompanyId, setDetectedCompanyId] = useState<string | null>(null);
   const [companyContextResolved, setCompanyContextResolved] = useState(false);
+  const [supportTab, setSupportTab] = useState<SupportTab>('chat');
 
   const loadData = useCallback(async () => {
     // Usar email real se fornecido (modo admin visualizando cliente), senão usar email do user
@@ -68,10 +70,13 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
             email: emailToUse,
             phone: phoneToUse,
           }),
-          supportService.findOrdersByCustomer({
-            email: emailToUse,
-            phone: phoneToUse
-          })
+          supportService.findOrdersByCustomer(
+            {
+              email: emailToUse,
+              phone: phoneToUse
+            },
+            { limit: 10, companyId: detectedCompanyId || companyId, useCache: true }
+          )
         ]);
         
         const duration = Date.now() - startTime;
@@ -112,7 +117,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
     } else {
       console.warn('[UserDashboard] Nenhum email ou telefone disponível para buscar dados');
     }
-  }, [user, realClientEmail]);
+  }, [user, realClientEmail, companyId, detectedCompanyId]);
 
   useEffect(() => {
     setProfileUser(user);
@@ -253,68 +258,94 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
     }
   };
 
+  const handleNotificationSelect = useCallback(async (notification: NotificationItem) => {
+    if (notification.type === 'ticket') {
+      setSupportTab('tickets');
+      const existing = tickets.find((ticket) => ticket.id === notification.entityId);
+      if (existing) {
+        setSelectedTicket(existing);
+        setIsDetailModalOpen(true);
+        return;
+      }
+      try {
+        const fetched = await supportService.getTicketById(notification.entityId);
+        if (fetched) {
+          setSelectedTicket(fetched);
+          setIsDetailModalOpen(true);
+        }
+      } catch (error) {
+        console.error('[UserDashboard] Erro ao abrir ticket da notificação:', error);
+      }
+    } else {
+      setSupportTab('chat');
+      if (typeof document !== 'undefined') {
+        document.getElementById('support-chat-section')?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [tickets]);
+
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-        <motion.header 
-          initial={{ y: -20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="bg-background/80 backdrop-blur-md border-b border-border sticky top-0 z-30 shadow-sm"
-        >
-          <div className="container-standard">
-            <div className="flex items-center justify-between py-4">
-              <motion.div 
-                className="flex items-center gap-3"
-                whileHover={{ scale: 1.02 }}
-                transition={{ type: "spring", stiffness: 400 }}
+      <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
+        <DashboardHeader
+          title={companyName}
+          subtitle={
+            adminMode
+              ? 'Modo admin - visualizando como cliente'
+              : 'Central de suporte completo'
+          }
+          leading={<span className="text-3xl">🛍️</span>}
+          onNotificationSelect={handleNotificationSelect}
+          showNotifications={!!user.email}
+          actions={
+            storeUrl ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(storeUrl, '_blank')}
+                className="flex items-center gap-2"
               >
-                <span className="text-3xl">🛍️</span>
-                <span className="text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                  {companyName}
-                </span>
-              </motion.div>
-              <div className="flex items-center gap-4">
-                {storeUrl && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open(storeUrl, '_blank')}
-                    className="flex items-center gap-2"
-                  >
-                    <span>🛍️</span>
-                    <span className="hidden sm:inline">Voltar para a Loja</span>
-                    <span className="sm:hidden">Loja</span>
-                  </Button>
-                )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="rounded-full">
-                      <div className="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center text-white shadow-lg">
-                        <UserIcon className="w-5 h-5"/>
-                      </div>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    {adminMode && onSwitchToAdmin && (
-                      <DropdownMenuItem onClick={onSwitchToAdmin} className="text-primary focus:text-primary">
-                        <span className="mr-2">⚡</span>
-                        Voltar ao Admin
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={() => setIsProfileModalOpen(true)}>
-                      <UserIcon className="w-4 h-4 mr-2" />
-                      Perfil
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive">
-                      <LogoutIcon className="w-4 h-4 mr-2" />
-                      Sair
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-          </div>
-        </motion.header>
+                <span>🛍️</span>
+                <span className="hidden sm:inline">Voltar para a Loja</span>
+                <span className="sm:hidden">Loja</span>
+              </Button>
+            ) : undefined
+          }
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full">
+                <div className="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center text-white shadow-lg">
+                  <UserIcon className="w-5 h-5" />
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {adminMode && onSwitchToAdmin && (
+                <DropdownMenuItem
+                  onClick={onSwitchToAdmin}
+                  className="text-primary focus:text-primary"
+                >
+                  <span className="mr-2">⚡</span>
+                  Voltar ao Admin
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => setIsProfileModalOpen(true)}>
+                <UserIcon className="w-4 h-4 mr-2" />
+                Perfil
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={onLogout}
+                className="text-destructive focus:text-destructive"
+              >
+                <LogoutIcon className="w-4 h-4 mr-2" />
+                Sair
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </DashboardHeader>
+      </motion.div>
 
         <main className="container-standard py-8">
           <motion.div 
@@ -347,6 +378,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, onLogout, adminMode
             onReload={loadData}
             companyId={companyId}
             adminMode={adminMode}
+            activeTab={supportTab}
+            onTabChange={setSupportTab}
           />
         </main>
       </div>

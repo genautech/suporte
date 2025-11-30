@@ -97,3 +97,27 @@ export const addAskedQuestion = (
   return [...askedQuestions, normalized].slice(-10);
 };
 
+/**
+ * Busca perguntas semelhantes em outras conversas da empresa
+ */
+export const findSimilarQuestionsInCompany = async (
+  question: string,
+  companyId: string,
+  currentUserEmail?: string
+): Promise<Array<{ question: string; answer: string; similarity: number }>> => {
+  try {
+    // Importar serviço de perguntas semelhantes
+    const { findSimilarInConversations } = await import('./similarQuestionService');
+    const matches = await findSimilarInConversations(question, companyId, currentUserEmail);
+    
+    return matches.map(m => ({
+      question: m.question,
+      answer: m.answer,
+      similarity: m.similarity,
+    }));
+  } catch (error) {
+    console.error('[questionTracker] Erro ao buscar perguntas semelhantes na empresa:', error);
+    return [];
+  }
+};
+

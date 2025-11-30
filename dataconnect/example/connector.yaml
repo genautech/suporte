@@ -1,0 +1,37 @@
+connectorId: example
+generate:
+  javascriptSdk:
+    - outputDir: ../../src/dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ../..
+      react: true
+      angular: false
+    - outputDir: ../../suporte-lojinha-prio-by-yoobe/src/dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ../../suporte-lojinha-prio-by-yoobe
+      react: true
+      angular: false
+    - outputDir: ../../postmark-email-proxy/src/dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ../../postmark-email-proxy
+      react: false
+      angular: false
+    - outputDir: ../../cubbo-auth-proxy/src/dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ../../cubbo-auth-proxy
+      react: false
+      angular: false
+    - outputDir: ../../suporte-lojinha-prio-by-yoobe/postmark-email-proxy/src/dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ../../suporte-lojinha-prio-by-yoobe/postmark-email-proxy
+      react: false
+      angular: false
+    - outputDir: ../../suporte-lojinha-prio-by-yoobe/cubbo-auth-proxy/src/dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ../../suporte-lojinha-prio-by-yoobe/cubbo-auth-proxy
+      react: false
+      angular: false
+  adminNodeSdk:
+    - outputDir: ../../firebase-auth-reset-proxy/src/dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ../../firebase-auth-reset-proxy

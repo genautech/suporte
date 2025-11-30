@@ -14,14 +14,175 @@ import {
   arrayUnion,
   Timestamp,
   setDoc,
+  QueryConstraint,
 } from 'firebase/firestore';
-import { Ticket, TicketStatus, KnowledgeBase, ApiConfig, CubboOrder, PickupLocation, TicketSubject, TicketFormConfig } from '../types';
+import { Ticket, TicketStatus, KnowledgeBase, ApiConfig, CubboOrder, PickupLocation, TicketSubject, TicketFormConfig, Company } from '../types';
 import { getTicketFormConfig } from '../data/ticketFormConfigs';
 import { companyService } from './companyService';
 import { userService } from './userService';
+import { orderCacheService } from './orderCacheService';
+import { deriveAllowedDomains, emailMatchesAllowedDomains } from './domainUtils';
 
 const ticketsCollection = collection(db, 'tickets');
 const apiConfigsCollection = collection(db, 'apiConfigs');
+
+const CUSTOMER_CACHE_TTL_MS = 60 * 1000;
+const COMPANY_CACHE_TTL_MS = 5 * 60 * 1000;
+const customerOrderMemoryCache = new Map<string, { expiresAt: number; orders: CubboOrder[] }>();
+
+interface GetTicketsOptions {
+  companyId?: string;
+}
+
+const hasTimeZoneInfo = (value: string): boolean => /([zZ]|[+-]\d{2}:?\d{2})$/.test(value);
+
+const parseFlexibleDateString = (value: string): Date | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    if (!Number.isNaN(numeric)) {
+      const ms = trimmed.length <= 10 ? numeric * 1000 : numeric;
+      const numericDate = new Date(ms);
+      if (!Number.isNaN(numericDate.getTime())) {
+        return numericDate;
+      }
+    }
+  }
+
+  const candidates = new Set<string>();
+  candidates.add(trimmed);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    candidates.add(`${trimmed}T00:00:00Z`);
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}\s/.test(trimmed)) {
+    const isoSpace = trimmed.replace(' ', 'T');
+    candidates.add(isoSpace);
+    if (!hasTimeZoneInfo(isoSpace)) {
+      candidates.add(`${isoSpace}Z`);
+    }
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed)) {
+    candidates.add(`${trimmed}:00`);
+  }
+
+  if (!hasTimeZoneInfo(trimmed) && /\.\d+$/.test(trimmed)) {
+    candidates.add(`${trimmed}Z`);
+  }
+
+  if (/(?:\+|\-)\d{4}$/.test(trimmed) && !/(?:\+|\-)\d{2}:\d{2}$/.test(trimmed)) {
+    candidates.add(trimmed.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+  }
+
+  const brMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (brMatch) {
+    const [, day, month, year, hour = '00', minute = '00', second = '00'] = brMatch;
+    const brDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
+    if (!Number.isNaN(brDate.getTime())) {
+      return brDate;
+    }
+  }
+
+  for (const candidate of candidates) {
+    const candidateDate = new Date(candidate);
+    if (!Number.isNaN(candidateDate.getTime())) {
+      return candidateDate;
+    }
+  }
+
+  return null;
+};
+
+const normalizeDateValue = (value: any): string | undefined => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+  }
+
+  if (typeof value === 'object') {
+    const maybeSeconds =
+      value && typeof (value as { seconds?: number }).seconds === 'number'
+        ? (value as { seconds: number }).seconds
+        : value && typeof (value as { _seconds?: number })._seconds === 'number'
+          ? (value as { _seconds: number })._seconds
+          : undefined;
+    const maybeNanoseconds =
+      value && typeof (value as { nanoseconds?: number }).nanoseconds === 'number'
+        ? (value as { nanoseconds: number }).nanoseconds
+        : value && typeof (value as { _nanoseconds?: number })._nanoseconds === 'number'
+          ? (value as { _nanoseconds: number })._nanoseconds
+          : undefined;
+    const seconds = typeof maybeSeconds === 'number' ? maybeSeconds : undefined;
+    const nanoseconds = typeof maybeNanoseconds === 'number' ? maybeNanoseconds : undefined;
+    if (typeof seconds === 'number') {
+      const msFromSeconds = seconds * 1000;
+      const extraMs = typeof nanoseconds === 'number' ? Math.floor(nanoseconds / 1_000_000) : 0;
+      const timestamp = msFromSeconds + extraMs;
+      const date = new Date(timestamp);
+      return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+    }
+  }
+
+  if (typeof value === 'number') {
+    const timestamp = value < 10000000000 ? value * 1000 : value;
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseFlexibleDateString(value);
+    return parsed ? parsed.toISOString() : undefined;
+  }
+
+  return undefined;
+};
+
+const resolveDateField = (
+  values: any[],
+  options: { fieldName: string; orderData?: any; fallbackToNow?: boolean }
+): string | undefined => {
+  for (const raw of values) {
+    const normalized = normalizeDateValue(raw);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  const hasRawValue = values.some((val) => {
+    if (val === undefined || val === null) {
+      return false;
+    }
+    if (typeof val === 'string') {
+      return val.trim().length > 0;
+    }
+    return true;
+  });
+
+  if (hasRawValue) {
+    console.warn(`[normalizeOrderData] Não foi possível interpretar ${options.fieldName}:`, {
+      orderId: options.orderData?.id || options.orderData?.order_number,
+      rawValues: values,
+    });
+  }
+
+  if (options.fallbackToNow) {
+    console.warn(`[normalizeOrderData] ${options.fieldName} ausente/ inválido, usando timestamp atual`, {
+      orderId: options.orderData?.id || options.orderData?.order_number,
+    });
+    return new Date().toISOString();
+  }
+
+  return undefined;
+};
 
 // --- Helpers ---
 
@@ -38,39 +199,26 @@ const ticketFromFirestore = (docSnapshot: any): Ticket => {
 // Helper para normalizar dados de pedidos da API Cubbo
 const normalizeOrderData = (orderData: any): CubboOrder => {
   // Normalizar data de criação - pode vir em diferentes formatos
-  let createdAt = orderData.created_at || orderData.createdAt || orderData.created || orderData.date_created;
+  const createdAtCandidates = [
+    orderData.created_at,
+    orderData.createdAt,
+    orderData.created,
+    orderData.date_created,
+    orderData.order_created_at,
+    orderData.order_created,
+    orderData.orderDate,
+    orderData.order_date,
+  ];
+  const createdAt = resolveDateField(createdAtCandidates, {
+    fieldName: 'created_at',
+    orderData,
+    fallbackToNow: true,
+  });
   
-  // Se a data já é uma string ISO válida, usar diretamente
-  // Se for um timestamp numérico, converter
-  // Se não existir, usar data atual como fallback
-  if (!createdAt) {
-    createdAt = new Date().toISOString();
-  } else if (typeof createdAt === 'number') {
-    // Se for timestamp em segundos, converter para milissegundos
-    createdAt = createdAt < 10000000000 ? createdAt * 1000 : createdAt;
-    createdAt = new Date(createdAt).toISOString();
-  } else if (typeof createdAt === 'string') {
-    // Validar se é uma data válida
-    const date = new Date(createdAt);
-    if (isNaN(date.getTime())) {
-      console.warn('[normalizeOrderData] Data inválida recebida:', createdAt);
-      createdAt = new Date().toISOString();
-    }
-  }
-  
-  // Normalizar data de atualização
-  let updatedAt = orderData.updated_at || orderData.updatedAt || orderData.updated || orderData.date_modified;
-  if (updatedAt) {
-    if (typeof updatedAt === 'number') {
-      updatedAt = updatedAt < 10000000000 ? updatedAt * 1000 : updatedAt;
-      updatedAt = new Date(updatedAt).toISOString();
-    } else if (typeof updatedAt === 'string') {
-      const date = new Date(updatedAt);
-      if (isNaN(date.getTime())) {
-        updatedAt = undefined;
-      }
-    }
-  }
+  const updatedAt = resolveDateField(
+    [orderData.updated_at, orderData.updatedAt, orderData.updated, orderData.date_modified],
+    { fieldName: 'updated_at', orderData }
+  );
   
   // Normalizar produtos - API Cubbo retorna como 'order_lines' (estrutura completa)
   // Formato: order_lines[{ id, sku, quantity, product: { id, name, sku, price, ... } }]
@@ -149,44 +297,16 @@ const normalizeOrderData = (orderData: any): CubboOrder => {
   }
   
   // Mapear data de envio - API Cubbo retorna como 'shipping_date'
-  let shippedAt = orderData.shipping_date || orderData.shipped_at || orderData.shipment_date;
-  if (shippedAt) {
-    try {
-      if (typeof shippedAt === 'number') {
-        shippedAt = shippedAt < 10000000000 ? shippedAt * 1000 : shippedAt;
-        shippedAt = new Date(shippedAt).toISOString();
-      } else if (typeof shippedAt === 'string') {
-        const date = new Date(shippedAt);
-        if (isNaN(date.getTime())) {
-          shippedAt = undefined;
-        } else {
-          shippedAt = date.toISOString();
-        }
-      }
-    } catch (e) {
-      shippedAt = undefined;
-    }
-  }
+  const shippedAt = resolveDateField(
+    [orderData.shipping_date, orderData.shipped_at, orderData.shipment_date],
+    { fieldName: 'shipped_at', orderData }
+  );
   
   // Mapear data de entrega/recebimento
-  let deliveredAt = orderData.delivered_at || orderData.delivery_date || orderData.received_at;
-  if (deliveredAt) {
-    try {
-      if (typeof deliveredAt === 'number') {
-        deliveredAt = deliveredAt < 10000000000 ? deliveredAt * 1000 : deliveredAt;
-        deliveredAt = new Date(deliveredAt).toISOString();
-      } else if (typeof deliveredAt === 'string') {
-        const date = new Date(deliveredAt);
-        if (isNaN(date.getTime())) {
-          deliveredAt = undefined;
-        } else {
-          deliveredAt = date.toISOString();
-        }
-      }
-    } catch (e) {
-      deliveredAt = undefined;
-    }
-  }
+  const deliveredAt = resolveDateField(
+    [orderData.delivered_at, orderData.delivery_date, orderData.received_at],
+    { fieldName: 'delivered_at', orderData }
+  );
 
   // Mapear comprovante de recebimento
   const receiptUrl = orderData.receipt_url || orderData.receipt_proof_url;
@@ -393,6 +513,13 @@ const normalizeOrderData = (orderData: any): CubboOrder => {
   return normalizedOrder as CubboOrder;
 };
 
+const buildCustomerCacheKey = (user: { email?: string | null; phone?: string | null }, companyId?: string | null) => {
+  const email = (user.email || '').trim().toLowerCase();
+  const phone = (user.phone || '').replace(/\D/g, '');
+  const companySegment = companyId || 'unknown';
+  return `${companySegment}:${email}:${phone}`;
+};
+
 // Extrair códigos de pedido do texto
 const extractOrderNumbers = (text: string): string[] => {
   const orderNumbers: string[] = [];
@@ -547,19 +674,110 @@ const getAccessToken = async (): Promise<string> => {
 
 // --- Public Service Methods ---
 
+interface GetCompanyOrdersOptions {
+  status?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  forceRefresh?: boolean;
+  cacheTtlMs?: number;
+  useCache?: boolean;
+  allowedCustomerDomains?: string[];
+}
+
+const filterCompanyOrders = (orders: CubboOrder[], options?: GetCompanyOrdersOptions): CubboOrder[] => {
+  if (!options) {
+    return orders;
+  }
+
+  let filtered = [...orders];
+
+  if (options.allowedCustomerDomains && options.allowedCustomerDomains.length > 0) {
+    filtered = filtered.filter((order) =>
+      emailMatchesAllowedDomains(
+        order.customer_email || order.shipping_email,
+        options.allowedCustomerDomains
+      )
+    );
+  }
+
+  if (options.status) {
+    const target = options.status.toLowerCase();
+    filtered = filtered.filter((order) => (order.status || '').toLowerCase() === target);
+  }
+
+  if (options.search) {
+    const term = options.search.toLowerCase();
+    filtered = filtered.filter((order) => {
+      const haystack = [
+        order.order_number,
+        order.id,
+        order.customer_name,
+        order.customer_email,
+        order.shipping_email,
+        (order.items_summary || []).join(' '),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }
+
+  return filtered;
+};
+
+interface FindOrdersOptions {
+  limit?: number;
+  companyId?: string;
+  useCache?: boolean;
+  forceRefresh?: boolean;
+  cacheTtlMs?: number;
+}
+
 export const supportService = {
   // Ticket functions
-  getTickets: async (includeArchived: boolean = false): Promise<Ticket[]> => {
-    const q = query(ticketsCollection, orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-    const allTickets = snapshot.docs.map(ticketFromFirestore);
+  getTickets: async (includeArchived: boolean = false, options?: GetTicketsOptions): Promise<Ticket[]> => {
+    const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
     
-    // Se não incluir arquivados, filtrar
+    if (options?.companyId) {
+      constraints.unshift(where('companyId', '==', options.companyId));
+    }
+
+    const q = query(ticketsCollection, ...constraints);
+    const snapshot = await getDocs(q);
+    let tickets = snapshot.docs.map(ticketFromFirestore);
+    
     if (!includeArchived) {
-      return allTickets.filter(ticket => ticket.status !== 'arquivado');
+      tickets = tickets.filter(ticket => ticket.status !== 'arquivado');
     }
     
-    return allTickets;
+    return tickets;
+  },
+
+  getTicketById: async (ticketId: string): Promise<Ticket | null> => {
+    try {
+      const ticketRef = doc(ticketsCollection, ticketId);
+      const snapshot = await getDoc(ticketRef);
+      if (!snapshot.exists()) {
+        return null;
+      }
+      return ticketFromFirestore(snapshot);
+    } catch (error) {
+      console.error('[supportService] Erro ao buscar ticket por ID:', error);
+      return null;
+    }
+  },
+
+  getArchivedTicketCount: async (): Promise<number> => {
+    try {
+      const q = query(ticketsCollection, where('status', '==', 'arquivado'));
+      const snapshot = await getDocs(q);
+      return snapshot.size;
+    } catch (error) {
+      console.error('[supportService] Erro ao contar tickets arquivados:', error);
+      return 0;
+    }
   },
 
   getTicketsByUser: async (user: { email?: string | null; phone?: string | null }): Promise<Ticket[]> => {
@@ -841,6 +1059,7 @@ export const supportService = {
     await updateDoc(ticketDoc, { 
       status: 'arquivado', 
       history: arrayUnion(newHistoryItem), 
+      archivedAt: serverTimestamp(),
       updatedAt: serverTimestamp() 
     });
   },
@@ -905,6 +1124,7 @@ export const supportService = {
     await updateDoc(ticketDoc, { 
       status: previousStatus, 
       history: arrayUnion(newHistoryItem), 
+      archivedAt: null,
       updatedAt: serverTimestamp() 
     });
   },
@@ -1456,11 +1676,47 @@ export const supportService = {
     }
   },
   
-  findOrdersByCustomer: async (user: { email?: string | null; phone?: string | null }): Promise<CubboOrder[]> => {
-    console.log('[findOrdersByCustomer] Iniciando busca de pedidos:', {
-      email: user.email,
+  findOrdersByCustomer: async (
+    user: { email?: string | null; phone?: string | null },
+    options?: FindOrdersOptions
+  ): Promise<CubboOrder[]> => {
+    const email = user.email?.trim().toLowerCase();
+    const phone = user.phone?.replace(/\D/g, '');
+    let resolvedCompanyId = options?.companyId;
+
+    if (!resolvedCompanyId && email) {
+      try {
+        resolvedCompanyId = await companyService.getCompanyFromEmail(email);
+      } catch (error) {
+        console.warn('[findOrdersByCustomer] Não foi possível identificar companyId pelo email:', email, error);
+      }
+    }
+
+    const cacheKey = buildCustomerCacheKey({ email, phone }, resolvedCompanyId);
+    const useCache = options?.useCache !== false;
+    const limit = options?.limit;
+    const cacheTtlMs = options?.cacheTtlMs || CUSTOMER_CACHE_TTL_MS;
+    const now = Date.now();
+
+    if (useCache && !options?.forceRefresh && cacheKey.trim().length > 0) {
+      const memo = customerOrderMemoryCache.get(cacheKey);
+      if (memo && memo.expiresAt > now) {
+        console.log('[findOrdersByCustomer] Cache (memória) utilizado', {
+          email,
+          phone,
+          companyId: resolvedCompanyId,
+          cachedCount: memo.orders.length,
+        });
+        const cachedOrders = limit ? memo.orders.slice(0, limit) : memo.orders;
+        return cachedOrders;
+      }
+    }
+
+    console.log('[findOrdersByCustomer] Iniciando busca remota de pedidos:', {
+      email,
       phone: user.phone,
-      timestamp: new Date().toISOString()
+      companyId: resolvedCompanyId,
+      timestamp: new Date().toISOString(),
     });
     
     let accessToken: string;
@@ -1500,39 +1756,33 @@ export const supportService = {
     
     let queryParams: string[] = [];
     
-    // Adicionar store_id primeiro (obrigatório)
     if (config.storeId) {
         queryParams.push(`store_id=${encodeURIComponent(config.storeId)}`);
     }
     
-    // Tentar ambos shipping_email e customer_email para garantir compatibilidade
-    // A API Cubbo pode aceitar qualquer um dos dois dependendo da versão/configuração
-    if (user.email) {
-        queryParams.push(`shipping_email=${encodeURIComponent(user.email)}`);
-        queryParams.push(`customer_email=${encodeURIComponent(user.email)}`);
-    } else if (user.phone) {
-        const sanitizedPhone = user.phone.replace(/\D/g, '');
-        queryParams.push(`customer_phone=${sanitizedPhone}`);
+    if (email) {
+        queryParams.push(`shipping_email=${encodeURIComponent(email)}`);
+        queryParams.push(`customer_email=${encodeURIComponent(email)}`);
+    } else if (phone) {
+        queryParams.push(`customer_phone=${phone}`);
     } else {
         return [];
     }
     
-    // Adicionar parâmetros de paginação e ordenação (opcionais, mas recomendados)
     queryParams.push(`per_page=100`);
     queryParams.push(`page=1`);
     queryParams.push(`sort=desc`);
     queryParams.push(`sort_by=created_at`);
 
     try {
-        // Usar o proxy para evitar problemas de CORS
         const proxyUrl = getProxyUrl();
         
         const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
         const requestUrl = `${proxyUrl}/api/orders${queryString}`;
         console.log(`[findOrdersByCustomer] Fazendo requisição via proxy para: ${requestUrl}`, { 
             storeId: config.storeId,
-            email: user.email,
-            phone: user.phone 
+            email,
+            phone 
         });
         
         let response: Response;
@@ -1543,12 +1793,10 @@ export const supportService = {
                 mode: 'cors'
             });
         } catch (fetchError: any) {
-            // Captura erros de rede/CORS especificamente
             const errorMessage = fetchError.message || String(fetchError);
             console.error(`[findOrdersByCustomer] Erro de rede ao fazer fetch:`, fetchError);
             
             if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('CORS')) {
-                // Lançar erro para ser capturado pelo catch externo e retornar array vazio com log
                 throw new Error(`CORS/Network Error: Não foi possível conectar ao proxy da API Cubbo. URL: ${requestUrl}`);
             }
             throw fetchError;
@@ -1567,7 +1815,6 @@ export const supportService = {
         }
         
         const data = await response.json();
-        // Log detalhado para debug
         console.log('[findOrdersByCustomer] Resposta recebida (raw):', JSON.stringify(data, null, 2));
         console.log('[findOrdersByCustomer] Tipo da resposta:', typeof data, Array.isArray(data) ? 'Array' : 'Object');
         if (!Array.isArray(data)) {
@@ -1579,10 +1826,6 @@ export const supportService = {
             console.log('[findOrdersByCustomer] data.results:', data.results);
         }
         
-        // A API Cubbo pode retornar:
-        // - Um array diretamente
-        // - Um objeto com 'orders' contendo o array
-        // - Um objeto com 'data' contendo o array
         let orders: any[] = [];
         if (Array.isArray(data)) {
             orders = data;
@@ -1595,32 +1838,34 @@ export const supportService = {
             }
         }
         
-        // Log antes da normalização
         console.log('[findOrdersByCustomer] Pedidos antes da normalização:', orders.length);
         if (orders.length > 0) {
             console.log('[findOrdersByCustomer] Primeiro pedido (raw):', JSON.stringify(orders[0], null, 2));
         }
         
-        // Normalizar dados de cada pedido
         const normalizedOrders = orders.map(normalizeOrderData);
         
-        // Log após normalização
         console.log('[findOrdersByCustomer] Pedidos após normalização:', normalizedOrders.length);
         if (normalizedOrders.length > 0) {
             console.log('[findOrdersByCustomer] Primeiro pedido (normalizado):', JSON.stringify(normalizedOrders[0], null, 2));
         }
+
+        if (useCache && cacheKey.trim().length > 0) {
+          customerOrderMemoryCache.set(cacheKey, {
+            expiresAt: now + cacheTtlMs,
+            orders: normalizedOrders,
+          });
+        }
         
-        return normalizedOrders;
+        return limit ? normalizedOrders.slice(0, limit) : normalizedOrders;
     } catch (error: any) {
         const errorMessage = error?.message || String(error);
         console.error("Failed to find orders by customer:", error);
         
-        // Log mais detalhado para diagnóstico
         if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('CORS')) {
             console.error(`[findOrdersByCustomer] Erro de conexão detectado. Isso pode indicar problema de CORS ou API inacessível.`, {
                 error: errorMessage,
-                configUrl: config?.url,
-                queryParams
+                companyId: resolvedCompanyId,
             });
         }
         
@@ -1916,7 +2161,7 @@ export const supportService = {
   }> => {
     try {
       // Buscar tickets concluídos da empresa
-      const allTickets = await supportService.getTickets(false);
+      const allTickets = await supportService.getTickets(false, { companyId });
       const companyTickets = allTickets.filter(t => 
         t.companyId === companyId && 
         (t.status === 'resolvido' || t.status === 'fechado')
@@ -2035,11 +2280,24 @@ export const supportService = {
   },
 
   // Listar pedidos relacionados à empresa para o gestor
-  getCompanyOrders: async (companyId: string): Promise<CubboOrder[]> => {
-    console.log('[getCompanyOrders] Iniciando busca de pedidos para companyId:', companyId);
+  getCompanyOrders: async (
+    companyId: string,
+    options?: GetCompanyOrdersOptions
+  ): Promise<{ items: CubboOrder[]; total: number; page: number; pageSize: number; hasMore: boolean; fromCache: boolean; cacheExpiresAt?: number }> => {
+    const perfStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    console.log('[getCompanyOrders] Iniciando busca de pedidos para companyId:', companyId, {
+      options,
+    });
+    const forceRefresh = options?.forceRefresh ?? false;
+    const metrics: Record<string, any> = {
+      companyId,
+      usedCache: false,
+      forceRefresh,
+    };
     const startTime = Date.now();
     try {
-      const { companyService } = await import('./companyService');
+      const useCache = options?.useCache !== false;
+
       console.log('[getCompanyOrders] Buscando dados da empresa...');
       const company = await companyService.getCompany(companyId);
       console.log('[getCompanyOrders] Empresa encontrada:', {
@@ -2047,10 +2305,44 @@ export const supportService = {
         name: company?.name,
         managerEmail: company?.managerEmail,
         keywords: company?.keywords,
-        storeId: company?.storeId
+        storeId: company?.storeId,
       });
-      
-      const { userService } = await import('./userService');
+
+      const allowedDomains = deriveAllowedDomains(company, options?.allowedCustomerDomains);
+      metrics.allowedDomains = allowedDomains;
+
+      const effectiveOptions: GetCompanyOrdersOptions = {
+        ...options,
+        allowedCustomerDomains: allowedDomains,
+      };
+
+      if (useCache && !forceRefresh) {
+        const cache = await orderCacheService.getCompanyCache(companyId);
+        if (cache && cache.orders && cache.orders.length > 0 && cache.expiresAt > Date.now()) {
+          metrics.usedCache = true;
+          metrics.cacheAgeMs = Date.now() - (cache.expiresAt - (effectiveOptions?.cacheTtlMs ?? COMPANY_CACHE_TTL_MS));
+          const filtered = filterCompanyOrders(cache.orders, effectiveOptions);
+          const pageSize =
+            effectiveOptions.pageSize && effectiveOptions.pageSize > 0 ? effectiveOptions.pageSize : filtered.length || 1;
+          const page = effectiveOptions.page && effectiveOptions.page > 0 ? effectiveOptions.page : 1;
+          const startIndex = (page - 1) * pageSize;
+          const slicedOrders = filtered.slice(startIndex, startIndex + pageSize);
+          const hasMore = startIndex + pageSize < filtered.length;
+          metrics.totalDurationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - perfStart;
+          console.log('[getCompanyOrders] Respondendo via cache', metrics);
+          return {
+            items: slicedOrders,
+            total: filtered.length,
+            page,
+            pageSize,
+            hasMore,
+            fromCache: true,
+            cacheExpiresAt: cache.expiresAt,
+          };
+        }
+      }
+
+      const fetchStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
       console.log('[getCompanyOrders] Buscando usuários da empresa...');
       const companyUsers = await userService.getUsersByCompany(companyId);
       console.log('[getCompanyOrders] Usuários encontrados:', companyUsers.length);
@@ -2073,7 +2365,24 @@ export const supportService = {
 
       const ordersMap = new Map<string, CubboOrder>();
 
+      const isOrderAllowed = (order: CubboOrder, fallbackEmail?: string) =>
+        emailMatchesAllowedDomains(
+          order.customer_email || order.shipping_email || fallbackEmail,
+          allowedDomains
+        );
+
       const addOrderToMap = (order: CubboOrder, fallbackEmail?: string) => {
+        if (!isOrderAllowed(order, fallbackEmail)) {
+          console.log('[getCompanyOrders] Pedido ignorado por domínio não autorizado', {
+            orderId: order.id,
+            orderNumber: order.order_number,
+            customerEmail: order.customer_email,
+            shippingEmail: order.shipping_email,
+            allowedDomains,
+          });
+          return;
+        }
+
         const referenceEmail =
           (order.customer_email || order.shipping_email || fallbackEmail || '').toLowerCase();
         const key = order.id || `${order.order_number || 'unknown'}-${referenceEmail}`;
@@ -2082,13 +2391,27 @@ export const supportService = {
         }
       };
 
+      const filterOrdersByDomain = (orders: CubboOrder[], fallbackEmail?: string) =>
+        allowedDomains.length > 0
+          ? orders.filter((order) => isOrderAllowed(order, fallbackEmail))
+          : orders;
+
       const fetchAndStoreOrders = async (email: string): Promise<CubboOrder[]> => {
         try {
           console.log(`[getCompanyOrders] Buscando pedidos para email: ${email}`);
           const orders = await supportService.findOrdersByCustomer({ email });
           console.log(`[getCompanyOrders] Pedidos encontrados para ${email}:`, orders.length);
-          orders.forEach(order => addOrderToMap(order, email));
-          return orders;
+          const allowedOrders = filterOrdersByDomain(orders, email);
+          if (orders.length !== allowedOrders.length) {
+            console.log('[getCompanyOrders] Pedidos removidos por domínio não permitido', {
+              email,
+              total: orders.length,
+              allowed: allowedOrders.length,
+              disallowed: orders.length - allowedOrders.length,
+            });
+          }
+          allowedOrders.forEach(order => addOrderToMap(order, email));
+          return allowedOrders;
         } catch (error: any) {
           console.error(`[getCompanyOrders] Erro ao buscar pedidos para ${email}:`, {
             error: error?.message || 'Erro desconhecido',
@@ -2108,7 +2431,10 @@ export const supportService = {
         orders.forEach(order => {
           const referenceEmail =
             (order.customer_email || order.shipping_email || email).toLowerCase();
-          if (order.status?.toLowerCase() === 'delivered') {
+          if (
+            order.status?.toLowerCase() === 'delivered' &&
+            emailMatchesAllowedDomains(referenceEmail, allowedDomains)
+          ) {
             closedOrderEmails.add(referenceEmail);
           }
         });
@@ -2121,7 +2447,8 @@ export const supportService = {
         for (const email of closedOrderEmails) {
           try {
             const keywordOrders = await supportService.findOrdersByCustomer({ email });
-            keywordOrders.forEach(order => {
+            const allowedKeywordOrders = filterOrdersByDomain(keywordOrders, email);
+            allowedKeywordOrders.forEach(order => {
               const orderData = JSON.stringify(order).toLowerCase();
               const matchesKeyword = company.keywords!.some(keyword =>
                 orderData.includes(keyword.toLowerCase())
@@ -2147,15 +2474,36 @@ export const supportService = {
         return dateB - dateA;
       });
 
-      const duration = Date.now() - startTime;
-      console.log('[getCompanyOrders] Busca concluída:', {
-        totalOrders: finalOrders.length,
-        duration: `${duration}ms`,
-        companyId,
-        timestamp: new Date().toISOString()
-      });
+      const filteredOrders = filterCompanyOrders(finalOrders, effectiveOptions);
+      const pageSize =
+        effectiveOptions.pageSize && effectiveOptions.pageSize > 0
+          ? effectiveOptions.pageSize
+          : filteredOrders.length || finalOrders.length || 1;
+      const page = effectiveOptions.page && effectiveOptions.page > 0 ? effectiveOptions.page : 1;
+      const startIndex = (page - 1) * pageSize;
+      const slicedOrders = filteredOrders.slice(startIndex, startIndex + pageSize);
+      const hasMore = startIndex + pageSize < filteredOrders.length;
 
-      return finalOrders;
+      await orderCacheService.setCompanyCache(companyId, filteredOrders, effectiveOptions?.cacheTtlMs);
+
+      const duration = Date.now() - startTime;
+      metrics.totalOrders = filteredOrders.length;
+      metrics.returnedOrders = slicedOrders.length;
+      metrics.remoteDurationMs =
+        typeof performance !== 'undefined' ? (performance.now() - fetchStart) : duration;
+      metrics.totalDurationMs =
+        typeof performance !== 'undefined' ? (performance.now() - perfStart) : duration;
+      console.log('[getCompanyOrders] Busca concluída:', metrics);
+
+      return {
+        items: slicedOrders,
+        total: filteredOrders.length,
+        page,
+        pageSize,
+        hasMore,
+        fromCache: false,
+        cacheExpiresAt: Date.now() + (effectiveOptions?.cacheTtlMs ?? COMPANY_CACHE_TTL_MS),
+      };
     } catch (error: any) {
       const duration = Date.now() - startTime;
       console.error('[getCompanyOrders] Erro ao coletar pedidos da empresa:', {
@@ -2165,7 +2513,14 @@ export const supportService = {
         duration: `${duration}ms`,
         timestamp: new Date().toISOString()
       });
-      return [];
+      return {
+        items: [],
+        total: 0,
+        page: options?.page || 1,
+        pageSize: options?.pageSize || 0,
+        hasMore: false,
+        fromCache: false,
+      };
     }
   },
 

@@ -166,3 +166,5 @@ echo ""
 echo "💡 Para sincronizar variáveis de ambiente:"
 echo "   npm run sync:env"
 
+
+

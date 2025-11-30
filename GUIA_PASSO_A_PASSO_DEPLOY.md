@@ -1,4 +1,49 @@
-# 📚 Guia Passo a Passo - Deploy do Cubbo Auth Proxy
+# 📚 Guia Passo a Passo - Deploy Automático
+
+Este guia reúne dois fluxos:
+
+1. **Aplicação principal (`suporte-lojinha`)** – usar o `deploy-auto.sh` (padrão em v2.3.0).  
+2. **Cubbo Auth Proxy** – roteiro completo (legado, mantido como referência).
+
+---
+
+## Parte 1 — Aplicação Principal (`suporte-lojinha`)
+
+### ✅ Pré-requisitos
+- `gcloud` instalado e autenticado (`gcloud auth login`).  
+- Projeto configurado: `gcloud config set project suporte-7e68b`.  
+- `cloudbuild.yaml` (copiado de `cloudbuild.yaml.example` e com `_VITE_GEMINI_API_KEY` preenchido).  
+- `Dockerfile` na raiz.
+
+### 🚀 Passo a passo
+```bash
+cd /Users/genautech/suporte
+./deploy-auto.sh
+```
+
+O script automaticamente:
+1. Valida gcloud, autenticação e projeto.  
+2. Garante `cloudbuild.yaml`/`Dockerfile` presentes.  
+3. Executa `gcloud builds submit --config cloudbuild.yaml --project suporte-7e68b`.  
+4. Faz `gcloud run deploy suporte-lojinha --image gcr.io/suporte-7e68b/suporte-lojinha:latest --region southamerica-east1 --allow-unauthenticated --port 8080 --memory 512Mi --cpu 1 --timeout 300 --max-instances 10`.  
+5. Compara a URL retornada com `https://suporte-lojinha-409489811769.southamerica-east1.run.app` e roda um `curl` simples para checar HTTP 200.  
+6. Exibe a revisão ativa (ex.: `suporte-lojinha-00033-tlx`) e grava tudo em `deploy-output.log`.
+
+### 🔍 Pós-deploy rápido
+```bash
+curl -I https://suporte-lojinha-409489811769.southamerica-east1.run.app
+gcloud run services logs read suporte-lojinha --region southamerica-east1 --limit 50
+```
+
+Se precisar usar o fluxo tradicional:
+```bash
+./deploy.sh           # build + deploy + git
+./deploy-quick.sh     # reaproveita imagem existente
+```
+
+---
+
+## Parte 2 — Deploy do Cubbo Auth Proxy
 
 ## 🎯 Objetivo
 Fazer o deploy do proxy de autenticação da API Cubbo no Google Cloud Run para corrigir o erro de CORS.

@@ -6,6 +6,8 @@ import { getGeminiResponse, searchIntelligentFAQ } from '../services/geminiServi
 import { supportService } from '../services/supportService';
 import { conversationService } from '../services/conversationService';
 import { extractQuestionFromMessage, hasQuestionBeenAsked, addAskedQuestion } from '../services/questionTracker';
+import { defaultResponseService } from '../services/defaultResponseService';
+import { validateResponsePrivacy } from '../services/privacyFilter';
 import { companyService } from '../services/companyService';
 import { userService } from '../services/userService';
 import { storageService } from '../services/storageService';
@@ -122,7 +124,10 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
             Promise.all([
                 conversationService.getLastConversation(user.email),
                 supportService.getTicketsByUser({ email: user.email, phone: user.phone }),
-                supportService.findOrdersByCustomer({ email: user.email, phone: user.phone })
+                supportService.findOrdersByCustomer(
+                    { email: user.email, phone: user.phone },
+                    { limit: 5, companyId, useCache: true }
+                )
             ]).then(([lastConv, tickets, orders]) => {
                 if (lastConv) {
                     setIsReturningUser(true);
@@ -315,8 +320,12 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
     };
     
     // Salvar conversa no Firestore
-    const saveConversation = async (resolved: boolean = false) => {
-        if (!user.email || messages.length === 0) return;
+    const saveConversation = async (
+        resolved: boolean = false,
+        overrideMessages?: Message[]
+    ) => {
+        const sourceMessages = overrideMessages ?? messages;
+        if (!user.email || sourceMessages.length === 0) return;
         
         try {
             // Registrar interação de chat no userService
@@ -326,7 +335,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
             const supportUser = await userService.getUserByEmail(user.email);
             const supportUserId = supportUser?.id;
             
-            const conversationMessages: ConversationMessage[] = messages
+            const conversationMessages: ConversationMessage[] = sourceMessages
                 .filter(m => m.sender !== MessageSender.SYSTEM || !m.component)
                 .map(m => ({
                     text: m.text,
@@ -335,9 +344,9 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                     orderNumbers: supportService.extractOrderNumbers(m.text),
                 }));
             
-            const allOrderNumbers = Array.from(new Set(
-                conversationMessages.flatMap(m => m.orderNumbers || [])
-            ));
+            const allOrderNumbers = Array.from(
+                new Set(conversationMessages.flatMap(m => m.orderNumbers || []))
+            );
             
             if (currentConversationId) {
                 // Atualizar conversa existente
@@ -462,10 +471,13 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                 case 'findCustomerOrders':
                     setIsSearching(true);
                     try {
-                        const orders = await supportService.findOrdersByCustomer({
-                            email: user.email || null,
-                            phone: user.phone || null
-                        });
+                        const orders = await supportService.findOrdersByCustomer(
+                            {
+                                email: user.email || null,
+                                phone: user.phone || null
+                            },
+                            { limit: 5, companyId, useCache: true }
+                        );
                         setIsSearching(false);
                         
                         if (orders.length === 0) {
@@ -518,7 +530,10 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                         // Usar findCustomerOrders quando apenas email fornecido
                         setIsSearching(true);
                         try {
-                            const customerOrders = await supportService.findOrdersByCustomer({ email: emailToUse });
+                            const customerOrders = await supportService.findOrdersByCustomer(
+                                { email: emailToUse },
+                                { limit: 5, companyId, useCache: true }
+                            );
                             setIsSearching(false);
                             if (customerOrders && customerOrders.length > 0) {
                                 if (customerOrders.length > 1) {
@@ -610,7 +625,10 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                             if (user.email && sanitizedOrderId) {
                                 setIsSearching(true);
                                 try {
-                                    const customerOrders = await supportService.findOrdersByCustomer({ email: user.email });
+                                    const customerOrders = await supportService.findOrdersByCustomer(
+                                        { email: user.email },
+                                        { limit: 5, companyId, useCache: true }
+                                    );
                                     setIsSearching(false);
                                     if (customerOrders && customerOrders.length > 0) {
                                         // Encontrou pedidos por email - mostrar lista e perguntar
@@ -1114,6 +1132,15 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
             text: userMessage, 
             sender: MessageSender.USER 
         }];
+
+        // Garantir que a conversa exista antes de processar respostas (necessário para rastrear perguntas)
+        if (!currentConversationId) {
+            try {
+                await saveConversation(false, enrichedMessages);
+            } catch (error) {
+                console.error('[Chatbot] Erro ao inicializar conversa:', error);
+            }
+        }
         
         // Adicionar contexto do histórico se disponível
         // IMPORTANTE: Filtrar códigos já presentes na mensagem atual para evitar duplicação
@@ -1136,6 +1163,47 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                 askedQuestions = currentConversation?.askedQuestions || [];
             } catch (error) {
                 console.error('[Chatbot] Erro ao buscar conversa para verificar perguntas:', error);
+            }
+        }
+        
+        // Verificar se há resposta padrão para esta pergunta
+        let defaultResponseFound: string | null = null;
+        if (companyId) {
+            try {
+                const matchingResponse = await defaultResponseService.findMatchingResponse(
+                    userMessage,
+                    companyId,
+                    0.7 // Threshold de 70% de similaridade
+                );
+                
+                if (matchingResponse) {
+                    defaultResponseFound = matchingResponse.answer;
+                    // Incrementar contador de uso
+                    if (matchingResponse.id) {
+                        await defaultResponseService.incrementUsage(matchingResponse.id);
+                    }
+                    console.log('[Chatbot] Resposta padrão encontrada:', matchingResponse.question);
+                }
+            } catch (error) {
+                console.error('[Chatbot] Erro ao buscar resposta padrão:', error);
+            }
+        }
+        
+        // Se encontrou resposta padrão, usar diretamente
+        if (defaultResponseFound) {
+            // Validar privacidade da resposta
+            const validation = validateResponsePrivacy(
+                defaultResponseFound,
+                userEmailToPass,
+                mentionedOrderNumbers
+            );
+            
+            if (validation.isValid) {
+                addMessage(validation.sanitized, MessageSender.BOT);
+                setAttemptsWithoutResolution(0); // Reset ao encontrar resposta
+                return;
+            } else {
+                console.warn('[Chatbot] Resposta padrão contém dados não autorizados, usando Gemini:', validation.issues);
             }
         }
         
@@ -1270,10 +1338,26 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                             e.stopPropagation();
                             setIsDragging(false);
 
-                            const items = Array.from(e.dataTransfer.items);
+                            const dataTransfer = e.dataTransfer;
+                            if (!dataTransfer) {
+                                return;
+                            }
+                            const items: DataTransferItem[] = [];
+                            for (let index = 0; index < dataTransfer.items.length; index++) {
+                                const item = dataTransfer.items[index];
+                                if (item) {
+                                    items.push(item);
+                                }
+                            }
                             
                             // Processar arquivos (imagens)
-                            const files = Array.from(e.dataTransfer.files);
+                            const files: File[] = [];
+                            for (let index = 0; index < dataTransfer.files.length; index++) {
+                                const file = dataTransfer.files[index];
+                                if (file) {
+                                    files.push(file);
+                                }
+                            }
                             const imageFiles = files.filter(file => file.type.startsWith('image/'));
                             
                             if (imageFiles.length > 0) {
@@ -1452,7 +1536,17 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onPaste={async (e) => {
-                                    const items = Array.from(e.clipboardData.items);
+                                    const clipboardData = e.clipboardData;
+                                    if (!clipboardData) {
+                                        return;
+                                    }
+                                    const items: DataTransferItem[] = [];
+                                    for (let index = 0; index < clipboardData.items.length; index++) {
+                                        const item = clipboardData.items[index];
+                                        if (item) {
+                                            items.push(item);
+                                        }
+                                    }
                                     
                                     // Verificar se há imagens coladas
                                     const imageItems = items.filter(item => item.type.startsWith('image/'));
@@ -1477,10 +1571,26 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                                     e.preventDefault();
                                     e.stopPropagation();
 
-                                    const items = Array.from(e.dataTransfer.items);
+                                    const dataTransfer = e.dataTransfer;
+                                    if (!dataTransfer) {
+                                        return;
+                                    }
+                                    const items: DataTransferItem[] = [];
+                                    for (let index = 0; index < dataTransfer.items.length; index++) {
+                                        const item = dataTransfer.items[index];
+                                        if (item) {
+                                            items.push(item);
+                                        }
+                                    }
                                     
                                     // Processar arquivos (imagens)
-                                    const files = Array.from(e.dataTransfer.files);
+                                    const files: File[] = [];
+                                    for (let index = 0; index < dataTransfer.files.length; index++) {
+                                        const file = dataTransfer.files[index];
+                                        if (file) {
+                                            files.push(file);
+                                        }
+                                    }
                                     const imageFiles = files.filter(file => file.type.startsWith('image/'));
                                     
                                     if (imageFiles.length > 0) {

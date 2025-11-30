@@ -28,7 +28,13 @@ import { MessageIcon } from './Icons';
 type FilterType = 'all' | 'undefined' | 'company';
 type ViewType = 'conversations' | 'users';
 
-export const AdminConversations: React.FC = () => {
+interface AdminConversationsProps {
+  focusConversationId?: string | null;
+}
+
+export const AdminConversations: React.FC<AdminConversationsProps> = ({
+  focusConversationId,
+}) => {
   const [view, setView] = useState<ViewType>('conversations');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [users, setUsers] = useState<SupportUser[]>([]);
@@ -398,6 +404,62 @@ export const AdminConversations: React.FC = () => {
   // Calcular conversas abertas (não resolvidas)
   const openConversations = conversations.filter(conv => !conv.resolved).length;
 
+  useEffect(() => {
+    if (!focusConversationId) return;
+    if (selectedConversation?.id === focusConversationId && isDetailModalOpen) {
+      return;
+    }
+    const localConversation = conversations.find(conv => conv.id === focusConversationId);
+    if (localConversation) {
+      handleViewConversation(localConversation);
+      return;
+    }
+    let isMounted = true;
+    conversationService
+      .getConversationById(focusConversationId)
+      .then((conversation) => {
+        if (conversation && isMounted) {
+          handleViewConversation(conversation);
+        }
+      })
+      .catch((error) =>
+        console.error('[AdminConversations] Erro ao carregar conversa por ID:', error)
+      );
+
+    return () => {
+      isMounted = false;
+    };
+  }, [focusConversationId, conversations, handleViewConversation, isDetailModalOpen, selectedConversation]);
+
+  // Filtragem de Conversas
+  const filteredConversations = searchQuery.trim()
+    ? conversations.filter(conv => {
+        const query = searchQuery.toLowerCase().trim();
+        const searchableText = [
+          conv.userId || '',
+          conv.orderNumbers?.join(' ') || '',
+          conv.messages?.map(m => m.text).join(' ') || '',
+          conv.id || ''
+        ].join(' ').toLowerCase();
+        return searchableText.includes(query);
+      })
+    : conversations;
+
+  // Filtragem de Usuários
+  const filteredUsers = searchQuery.trim()
+    ? users.filter(user => {
+        const query = searchQuery.toLowerCase().trim();
+        const searchableText = [
+          user.email || '',
+          user.firstName || '',
+          user.lastName || '',
+          user.phone || '',
+          user.id || ''
+        ].join(' ').toLowerCase();
+        return searchableText.includes(query);
+      })
+    : users;
+
   return (
     <div className="space-y-6">
       {/* Notificação de Conversas Abertas */}
@@ -532,27 +594,13 @@ export const AdminConversations: React.FC = () => {
           )}
         </div>
       </div>
+      </div>
 
       {/* Lista de Conversas */}
       {view === 'conversations' && (
         <Card>
           <CardContent className="p-0">
-            {/* Filtrar conversas por busca */}
-            {(() => {
-              const filteredConversations = searchQuery.trim()
-                ? conversations.filter(conv => {
-                    const query = searchQuery.toLowerCase().trim();
-                    const searchableText = [
-                      conv.userId || '',
-                      conv.orderNumbers?.join(' ') || '',
-                      conv.messages?.map(m => m.text).join(' ') || '',
-                      conv.id || ''
-                    ].join(' ').toLowerCase();
-                    return searchableText.includes(query);
-                  })
-                : conversations;
-              
-              return filteredConversations.length === 0 ? (
+            {filteredConversations.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
                   {searchQuery.trim() 
                     ? `Nenhuma conversa encontrada para "${searchQuery}"`
@@ -694,29 +742,24 @@ export const AdminConversations: React.FC = () => {
                 </table>
               </div>
             )}
+            </>
+            )}
           </CardContent>
         </Card>
       )}
 
       {/* Lista de Usuários */}
-      {view === 'users' && (() => {
-        const filteredUsers = searchQuery.trim()
-          ? users.filter(user => {
-              const query = searchQuery.toLowerCase().trim();
-              const searchableText = [
-                user.email || '',
-                user.firstName || '',
-                user.lastName || '',
-                user.phone || '',
-                user.id || ''
-              ].join(' ').toLowerCase();
-              return searchableText.includes(query);
-            })
-          : users;
-        
-        return (
+      {view === 'users' && (
         <Card>
           <CardContent className="p-0">
+            {filteredUsers.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  {searchQuery.trim() 
+                    ? `Nenhum usuário encontrado para "${searchQuery}"`
+                    : 'Nenhum usuário encontrado'}
+                </div>
+              ) : (
+                <>
             {/* Barra de ações quando há seleção */}
             {selectedUserEmails.size > 0 && (
               <div className="p-4 bg-primary/10 border-b flex items-center justify-between">
@@ -824,6 +867,8 @@ export const AdminConversations: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            )}
+            </>
             )}
           </CardContent>
         </Card>
@@ -1055,4 +1100,3 @@ export const AdminConversations: React.FC = () => {
     </div>
   );
 };
-

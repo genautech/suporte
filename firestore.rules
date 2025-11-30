@@ -1,25 +1,64 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helpers de autenticação
+    function hasAuthEmail() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function userRoleDocExists() {
+      return hasAuthEmail() &&
+             exists(/databases/$(database)/documents/userRoles/$(request.auth.token.email));
+    }
+
+    function userRoleField(fieldName) {
+      return get(/databases/$(database)/documents/userRoles/$(request.auth.token.email)).data[fieldName];
+    }
+
     // Função helper para verificar se é admin
     function isAdmin() {
       return request.auth != null && (
         request.auth.token.admin == true ||
-        request.auth.token.email == 'admin@yoobe.co'
+        (hasAuthEmail() && request.auth.token.email == 'admin@yoobe.co') ||
+        (userRoleDocExists() && userRoleField('role') == 'admin')
       );
     }
     
     // Função helper para verificar se é gestor
     function isManager() {
-      return request.auth != null && 
-             firestore.exists(/databases/$(database)/documents/userRoles/$(request.auth.token.email.lower())) &&
-             firestore.get(/databases/$(database)/documents/userRoles/$(request.auth.token.email.lower())).data.role == 'manager';
+      return userRoleDocExists() && userRoleField('role') == 'manager';
     }
     
     // Função helper para verificar se é gestor de uma empresa específica
     function isManagerOfCompany(companyId) {
       return isManager() &&
-             firestore.get(/databases/$(database)/documents/userRoles/$(request.auth.token.email.lower())).data.companyId == companyId;
+             userRoleField('companyId') == companyId;
+    }
+
+    function managerCompanyUpdateAllowed(companyId) {
+      return isManagerOfCompany(companyId) &&
+             request.resource.data.keys().hasOnly(['managerName', 'managerEmail', 'updatedAt']);
+    }
+
+    function managerCanGrantRole(email) {
+      return isManager() &&
+        request.resource.data.email is string &&
+        request.resource.data.email.lower() == email.lower() &&
+        request.resource.data.role == 'manager' &&
+        request.resource.data.companyId != null &&
+        request.resource.data.companyId == userRoleField('companyId') &&
+        request.resource.data.keys().hasOnly(['email', 'role', 'companyId', 'createdAt', 'updatedAt']);
+    }
+
+    function managerCanRevokeRole(email) {
+      return isManager() &&
+        resource.data != null &&
+        resource.data.companyId == userRoleField('companyId') &&
+        resource.data.email != null &&
+        resource.data.email.lower() == email.lower() &&
+        request.resource.data.keys().hasOnly(['role', 'companyId', 'updatedAt']) &&
+        request.resource.data.role == 'client' &&
+        (request.resource.data.companyId == null);
     }
     
     // Regras padrão - permitir leitura/escrita autenticada
@@ -46,6 +85,28 @@ service cloud.firestore {
       allow read: if true; // Todos podem ler, filtro por companyId é feito no código
       allow write: if isAdmin();
     }
+
+    // Respostas padrão - usadas pelo chatbot e painel admin
+    match /defaultResponses/{responseId} {
+      // Qualquer usuário autenticado pode ler (client, gestor ou admin)
+      allow read: if request.auth != null;
+
+      // Apenas admins ou gestores da empresa relacionada podem criar
+      allow create: if isAdmin() ||
+        (
+          isManager() &&
+          request.resource.data.companyId != null &&
+          isManagerOfCompany(request.resource.data.companyId)
+        );
+
+      // Apenas admins ou gestores da própria empresa podem atualizar/desativar
+      allow update, delete: if isAdmin() ||
+        (
+          isManager() &&
+          resource.data.companyId != null &&
+          isManagerOfCompany(resource.data.companyId)
+        );
+    }
     
     // Knowledge Base - todos podem ler, apenas admins podem escrever
     // Clientes veem apenas KB da sua empresa + generalista
@@ -60,8 +121,10 @@ service cloud.firestore {
     match /companies/{companyId} {
       // Permitir leitura pública (dados não sensíveis)
       allow read: if true;
-      // Apenas admins podem escrever
+      // Apenas admins podem criar/deletar
       allow write: if isAdmin();
+      // Gestor pode atualizar apenas os campos de contato
+      allow update: if isAdmin() || managerCompanyUpdateAllowed(companyId);
     }
     
     // User Roles - permitir leitura pública para verificação de role (necessário para login)
@@ -69,7 +132,9 @@ service cloud.firestore {
     // Leitura pública permitida apenas para verificação de role antes do login
     match /userRoles/{email} {
       allow read: if true; // Permitir leitura pública para verificação de role (dados não sensíveis: apenas role e companyId)
-      allow write: if isAdmin();
+      allow create: if isAdmin() || managerCanGrantRole(email);
+      allow update: if isAdmin() || managerCanGrantRole(email) || managerCanRevokeRole(email);
+      allow delete: if isAdmin();
     }
     
     // Conversations - usuários podem ler/escrever suas próprias conversas, gestores podem ler conversas da sua empresa
@@ -161,6 +226,41 @@ service cloud.firestore {
       
       // Não permitir delete
       allow delete: if false;
+    }
+
+    // Perfis do gestor - apenas gestores da própria empresa ou admins podem ler/escrever
+    match /managerProfiles/{companyId} {
+      allow read: if isAdmin() || (isManager() && isManagerOfCompany(companyId));
+      allow create, update: if isAdmin() || (isManager() && isManagerOfCompany(companyId));
+      allow delete: if isAdmin();
+    }
+
+    // Chamados do gestor - gestores podem criar e ler seus chamados, admins podem atualizar status
+    match /managerEscalations/{escalationId} {
+      allow read: if isAdmin() ||
+        (isManager() && resource.data.companyId != null && isManagerOfCompany(resource.data.companyId));
+      allow create: if isManager() &&
+        request.resource.data.companyId != null &&
+        isManagerOfCompany(request.resource.data.companyId);
+      allow update, delete: if isAdmin();
+    }
+
+    // Notificações dedicadas ao gestor - apenas gestores da empresa e admins
+    match /managerNotifications/{notificationId} {
+      allow read: if isAdmin() ||
+        (isManager() && resource.data.companyId != null && isManagerOfCompany(resource.data.companyId));
+      allow create: if isAdmin() ||
+        (isManager() &&
+         request.resource.data.companyId != null &&
+         isManagerOfCompany(request.resource.data.companyId));
+      allow update, delete: if isAdmin();
+    }
+
+    // Cache de pedidos por empresa
+    match /companyOrdersCache/{companyId} {
+      allow read: if isAdmin() || (isManager() && isManagerOfCompany(companyId));
+      allow create, update: if isAdmin() || (isManager() && isManagerOfCompany(companyId));
+      allow delete: if isAdmin();
     }
     
     // Default: negar acesso

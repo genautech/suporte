@@ -4,6 +4,8 @@
 import { customerKnowledgeService } from './customerKnowledgeService';
 import { faqService } from './faqService';
 import { knowledgeBaseService } from './knowledgeBaseService';
+import { defaultResponseService } from './defaultResponseService';
+import { filterPersonalData, filterContextForPrivacy } from './privacyFilter';
 
 const MAX_CONTEXT_LENGTH = 8000; // Caracteres máximos para contexto
 const TARGET_CONTEXT_LENGTH = 6000; // Tamanho ideal
@@ -230,46 +232,99 @@ Sempre priorize este conhecimento sobre outras fontes quando relevante.`;
 };
 
 /**
- * Otimiza contexto completo (FAQ + Cliente + Base de Conhecimento)
+ * Otimiza contexto de respostas padrão
+ */
+export const optimizeDefaultResponsesContext = async (
+  companyId?: string,
+  maxLength: number = 1500
+): Promise<string> => {
+  if (!companyId) {
+    return '';
+  }
+  
+  try {
+    const responses = await defaultResponseService.getDefaultResponses(companyId, true);
+    
+    if (responses.length === 0) {
+      return '';
+    }
+    
+    // Priorizar respostas mais usadas
+    const sortedResponses = responses
+      .sort((a, b) => b.usageCount - a.usageCount)
+      .slice(0, 5); // Top 5 mais usadas
+    
+    let contextText = sortedResponses
+      .map(response => `P: ${response.question}\nR: ${response.answer}`)
+      .join('\n\n');
+    
+    if (contextText.length > maxLength) {
+      contextText = summarizeText(contextText, maxLength);
+    }
+    
+    return `\n\nRESPOSTAS PADRÃO DISPONÍVEIS:
+${contextText}
+
+Use estas respostas padrão quando a pergunta do usuário for semelhante.
+Priorize respostas padrão sobre outras fontes quando aplicável.`;
+  } catch (error) {
+    console.error('[contextOptimizer] Erro ao otimizar respostas padrão:', error);
+    return '';
+  }
+};
+
+/**
+ * Otimiza contexto completo (FAQ + Cliente + Base de Conhecimento + Respostas Padrão)
  */
 export const optimizeFullContext = async (
   customerEmail?: string,
-  companyId?: string
+  companyId?: string,
+  allowedOrderNumbers: string[] = []
 ): Promise<string> => {
   try {
     // Calcular tamanhos proporcionais
     const totalMaxLength = MAX_CONTEXT_LENGTH;
-    const faqMaxLength = Math.floor(totalMaxLength * 0.35); // 35% para FAQ
-    const customerMaxLength = Math.floor(totalMaxLength * 0.25); // 25% para cliente
-    const kbMaxLength = Math.floor(totalMaxLength * 0.40); // 40% para base de conhecimento (prioridade!)
+    const faqMaxLength = Math.floor(totalMaxLength * 0.30); // 30% para FAQ
+    const customerMaxLength = Math.floor(totalMaxLength * 0.20); // 20% para cliente
+    const kbMaxLength = Math.floor(totalMaxLength * 0.30); // 30% para base de conhecimento
+    const defaultResponsesMaxLength = Math.floor(totalMaxLength * 0.20); // 20% para respostas padrão
 
     // Buscar todos os contextos em paralelo
-    const [faqContext, customerContext, kbContext] = await Promise.all([
+    const [faqContext, customerContext, kbContext, defaultResponsesContext] = await Promise.all([
       optimizeFAQContext(companyId, faqMaxLength),
       optimizeCustomerContext(customerEmail, companyId, customerMaxLength),
-      optimizeKnowledgeBaseContext(companyId, kbMaxLength), // SEMPRE incluir base de conhecimento
+      optimizeKnowledgeBaseContext(companyId, kbMaxLength),
+      optimizeDefaultResponsesContext(companyId, defaultResponsesMaxLength),
     ]);
 
-    // Combinar contextos (Base de Conhecimento sempre primeiro para prioridade)
-    const fullContext = [kbContext, faqContext, customerContext]
+    // Combinar contextos (Respostas Padrão primeiro, depois Base de Conhecimento)
+    const fullContext = [defaultResponsesContext, kbContext, faqContext, customerContext]
       .filter(c => c.length > 0)
       .join('\n');
 
-    // Se ainda muito longo, resumir tudo (mas manter Base de Conhecimento)
-    if (fullContext.length > MAX_CONTEXT_LENGTH) {
-      // Tentar manter Base de Conhecimento completa e resumir o resto
-      if (kbContext.length > 0) {
-        const remainingLength = MAX_CONTEXT_LENGTH - kbContext.length - 200; // Margem
+    // Filtrar dados pessoais antes de retornar
+    let filteredContext = fullContext;
+    if (customerEmail) {
+      filteredContext = filterPersonalData(fullContext, customerEmail, allowedOrderNumbers);
+    }
+
+    // Se ainda muito longo, resumir tudo (mas manter Respostas Padrão e Base de Conhecimento)
+    if (filteredContext.length > MAX_CONTEXT_LENGTH) {
+      // Tentar manter Respostas Padrão e Base de Conhecimento completas
+      if (defaultResponsesContext.length > 0 && kbContext.length > 0) {
+        const remainingLength = MAX_CONTEXT_LENGTH - defaultResponsesContext.length - kbContext.length - 200;
         const otherContext = [faqContext, customerContext]
           .filter(c => c.length > 0)
           .join('\n');
         const summarizedOther = summarizeText(otherContext, Math.max(0, remainingLength));
-        return [kbContext, summarizedOther].filter(c => c.length > 0).join('\n');
+        return [defaultResponsesContext, kbContext, summarizedOther]
+          .filter(c => c.length > 0)
+          .join('\n');
       }
-      return summarizeText(fullContext, MAX_CONTEXT_LENGTH);
+      return summarizeText(filteredContext, MAX_CONTEXT_LENGTH);
     }
 
-    return fullContext;
+    return filteredContext;
   } catch (error) {
     console.error('[contextOptimizer] Erro ao otimizar contexto completo:', error);
     return '';

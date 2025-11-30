@@ -1,6 +1,6 @@
 // Fix: Implement the AdminDashboard component.
 import React, { useState, useEffect, useCallback } from 'react';
-import { Ticket } from '../types';
+import { Ticket, NotificationItem } from '../types';
 import { supportService } from '../services/supportService';
 import { TicketForm } from './TicketForm';
 import { TicketDetailModal } from './TicketDetailModal';
@@ -11,6 +11,8 @@ import { AdminKnowledgeBase } from './AdminKnowledgeBase';
 import { AdminCompanies } from './AdminCompanies';
 import { AdminConversations } from './AdminConversations';
 import { AdminLearningMetrics } from './AdminLearningMetrics';
+import { AdminDefaultResponses } from './AdminDefaultResponses';
+import { AdminSupportNotices } from './AdminSupportNotices';
 import { companyService } from '../services/companyService';
 import { conversationService } from '../services/conversationService';
 import { Company } from '../types';
@@ -21,6 +23,7 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Badge } from './ui/badge';
+import { Input } from './ui/input';
 import {
   Select,
   SelectContent,
@@ -29,8 +32,22 @@ import {
   SelectValue,
 } from './ui/select';
 import { motion } from 'framer-motion';
+import { DashboardHeader } from './DashboardHeader';
 
-type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados' | 'companies' | 'conversations' | 'learning';
+type AdminView =
+  | 'tickets'
+  | 'training'
+  | 'status'
+  | 'chatbot'
+  | 'orders'
+  | 'faq'
+  | 'knowledge'
+  | 'arquivados'
+  | 'companies'
+  | 'conversations'
+  | 'learning'
+  | 'defaultResponses'
+  | 'supportNotices';
 
 interface AdminDashboardProps {
     onLogout: () => void;
@@ -58,9 +75,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
         nps: number;
     } | null>(null);
     const [finalizedCount, setFinalizedCount] = useState<number>(0);
+    const [archivedTicketCount, setArchivedTicketCount] = useState<number>(0);
+    const [archivedConversationCount, setArchivedConversationCount] = useState<number>(0);
     const [isLoadingNps, setIsLoadingNps] = useState(false);
     const [subjectFilter, setSubjectFilter] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState<string>('');
+    const [pendingConversationFocus, setPendingConversationFocus] = useState<string | null>(null);
     
     const loadTickets = useCallback(async () => {
         setIsLoading(true);
@@ -69,11 +89,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
         setIsLoading(false);
     }, [view, showArchived]);
 
+    const refreshArchiveCounts = useCallback(async () => {
+        try {
+            const [ticketCount, conversationCount] = await Promise.all([
+                supportService.getArchivedTicketCount(),
+                conversationService.getArchivedConversationCount(),
+            ]);
+            setArchivedTicketCount(ticketCount);
+            setArchivedConversationCount(conversationCount);
+        } catch (error) {
+            console.error('Erro ao carregar contagens de itens arquivados:', error);
+        }
+    }, []);
+
     useEffect(() => {
         if (view === 'tickets' || view === 'arquivados') {
             loadTickets();
         }
     }, [view, loadTickets]);
+
+    useEffect(() => {
+        refreshArchiveCounts();
+    }, [refreshArchiveCounts]);
 
     useEffect(() => {
         // Carregar empresas para o select de visualização como cliente
@@ -141,6 +178,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 await supportService.archiveTicket(ticket.id);
             }
             loadTickets();
+            refreshArchiveCounts();
         } catch (error) {
             console.error('Erro ao arquivar/reativar ticket:', error);
         }
@@ -165,6 +203,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
             default: return '';
         }
     };
+
+    const handleNotificationSelect = useCallback(
+        async (notification: NotificationItem) => {
+            if (notification.type === 'ticket') {
+                setView('tickets');
+                const existing = tickets.find((ticket) => ticket.id === notification.entityId);
+                if (existing) {
+                    setSelectedTicket(existing);
+                    setIsDetailModalOpen(true);
+                    return;
+                }
+                try {
+                    const fetched = await supportService.getTicketById(notification.entityId);
+                    if (fetched) {
+                        setSelectedTicket(fetched);
+                        setIsDetailModalOpen(true);
+                    } else {
+                        console.warn('[AdminDashboard] Ticket não encontrado para notificação.');
+                    }
+                } catch (error) {
+                    console.error('[AdminDashboard] Erro ao carregar ticket da notificação:', error);
+                }
+            } else if (notification.type === 'conversation') {
+                setView('conversations');
+                setPendingConversationFocus(notification.entityId);
+            }
+        },
+        [tickets]
+    );
+
+    useEffect(() => {
+        if (!pendingConversationFocus || view !== 'conversations') return;
+        const timeout = setTimeout(() => setPendingConversationFocus(null), 1500);
+        return () => clearTimeout(timeout);
+    }, [pendingConversationFocus, view]);
 
     const renderMainContent = () => {
         switch(view) {
@@ -493,12 +566,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 return <AdminFAQ />;
             case 'knowledge':
                 return <AdminKnowledgeBase />;
+            case 'supportNotices':
+                return <AdminSupportNotices />;
             case 'companies':
                 return <AdminCompanies />;
             case 'conversations':
-                return <AdminConversations />;
+                return <AdminConversations focusConversationId={pendingConversationFocus} />;
             case 'learning':
                 return <AdminLearningMetrics />;
+            case 'defaultResponses':
+                return <AdminDefaultResponses />;
             case 'chatbot': // New view for chatbot testing
                 return (
                      <div className="animate-fade-in h-full flex flex-col items-center justify-center">
@@ -528,7 +605,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 <div className="p-6 border-b border-border">
                     <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent flex items-center mb-1">
                         <span className="text-2xl mr-2">⚡</span>
-                        Admin Prio
+                        Suporte Yoobe
                     </h2>
                     <p className="text-xs text-muted-foreground">Painel Administrativo</p>
                 </div>
@@ -625,6 +702,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                         Empresas
                     </motion.a>
                     <motion.a 
+                        onClick={() => setView('supportNotices')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'supportNotices' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>🔔</span>
+                        Avisos
+                    </motion.a>
+                    <motion.a 
                         onClick={() => setView('conversations')} 
                         whileHover={{ x: 4 }}
                         whileTap={{ scale: 0.98 }}
@@ -649,6 +739,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                     >
                         <BrainIcon className="w-4 h-4" />
                         Aprendizado
+                    </motion.a>
+                    <motion.a 
+                        onClick={() => setView('defaultResponses')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'defaultResponses' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>📝</span>
+                        Respostas Padrão
                     </motion.a>
                     <motion.a 
                         onClick={() => setView('arquivados')} 
@@ -718,13 +821,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
             </motion.aside>
 
             {/* Main Content */}
-            <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
+            <main className="flex-1 overflow-y-auto">
+                <DashboardHeader
+                    title="Central de Atendimento"
+                    subtitle="Gerencie chamados, conversas e empresas em tempo real"
+                    onNotificationSelect={handleNotificationSelect}
+                    className="px-6"
+                />
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     key={view}
                     transition={{ duration: 0.3 }}
+                    className="p-6 lg:p-8"
                 >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium text-muted-foreground">
+                                    Chamados Arquivados
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-bold">{archivedTicketCount}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Total de tickets fora da fila ativa
+                                </p>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium text-muted-foreground">
+                                    Conversas Arquivadas
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-bold">{archivedConversationCount}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Conversas ocultas do histórico público
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </div>
                     {renderMainContent()}
                 </motion.div>
             </main>

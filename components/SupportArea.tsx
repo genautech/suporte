@@ -14,6 +14,9 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { SupportNoticeBanner } from './SupportNoticeBanner';
+
+export type SupportTab = 'orders' | 'tickets' | 'chat' | 'faq' | 'manage-faq';
 
 interface SupportAreaProps {
   user: User;
@@ -24,6 +27,8 @@ interface SupportAreaProps {
   onReload: () => void;
   companyId?: string; // ID da empresa do usuário
   adminMode?: boolean; // Se true, mostra opções de admin (ex: gerenciar FAQ)
+  activeTab?: SupportTab;
+  onTabChange?: (tab: SupportTab) => void;
 }
 
 export const SupportArea: React.FC<SupportAreaProps> = ({
@@ -34,13 +39,25 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
   onTicketClick,
   onReload,
   companyId,
-  adminMode = false
+  adminMode = false,
+  activeTab,
+  onTabChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'orders' | 'tickets' | 'chat' | 'faq' | 'manage-faq'>('chat');
+  const [internalTab, setInternalTab] = useState<SupportTab>('chat');
   const [selectedOrder, setSelectedOrder] = useState<CubboOrder | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isTicketFormOpen, setIsTicketFormOpen] = useState(false);
   const [ticketOrderContext, setTicketOrderContext] = useState<CubboOrder | null>(null);
+
+  const currentTab = activeTab ?? internalTab;
+
+  const handleTabChange = (value: SupportTab) => {
+    if (onTabChange) {
+      onTabChange(value);
+    } else {
+      setInternalTab(value);
+    }
+  };
 
   const handleOrderClick = (order: CubboOrder) => {
     setSelectedOrder(order);
@@ -61,12 +78,22 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
     setIsTicketFormOpen(false);
     setTicketOrderContext(null);
     onReload();
-    setActiveTab('tickets');
+    handleTabChange('tickets');
   };
 
   return (
     <>
-    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-4 md:space-y-6">
+    <SupportNoticeBanner
+      companyId={companyId}
+      location="support"
+      withNotificationShortcut
+      className="mb-4"
+    />
+    <Tabs
+      value={currentTab}
+      onValueChange={(value) => handleTabChange(value as SupportTab)}
+      className="space-y-4 md:space-y-6"
+    >
       <TabsList className={`flex w-full overflow-x-auto ${adminMode ? 'flex-wrap sm:flex-nowrap' : 'flex-wrap sm:flex-nowrap'} gap-1 md:gap-2 pb-1`}>
         <TabsTrigger value="orders" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px] flex-shrink-0">📦 <span className="hidden sm:inline">Meus </span>Pedidos</TabsTrigger>
         <TabsTrigger value="tickets" className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-2.5 min-h-[44px] flex-shrink-0">🎫 Chamados</TabsTrigger>
@@ -91,7 +118,7 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
                   <Button 
                     variant="outline"
                     size="sm"
-                    onClick={() => setActiveTab('faq')}
+                    onClick={() => handleTabChange('faq')}
                     className="min-h-[44px] text-sm"
                   >
                     Ver Todas
@@ -177,7 +204,7 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
                     Abrir Chamado
                   </Button>
                   <Button
-                    onClick={() => setActiveTab('chat')}
+                    onClick={() => handleTabChange('chat')}
                     variant="outline"
                     className="min-h-[44px] text-sm md:text-base"
                   >
@@ -260,7 +287,7 @@ export const SupportArea: React.FC<SupportAreaProps> = ({
         </div>
       </TabsContent>
 
-      <TabsContent value="chat" className="min-h-[500px] md:min-h-[600px]">
+      <TabsContent value="chat" className="min-h-[500px] md:min-h-[600px]" id="support-chat-section">
         <Card className="flex flex-col h-full">
           <CardHeader className="p-4 md:p-6 pb-2 md:pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

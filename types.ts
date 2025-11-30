@@ -24,6 +24,7 @@ export interface ExchangeFormData {
 
 export type TicketStatus = 'aberto' | 'em_andamento' | 'resolvido' | 'fechado' | 'arquivado';
 export type TicketPriority = 'baixa' | 'media' | 'alta';
+export type TicketSource = 'manager' | 'user' | 'system' | 'automation';
 
 export interface TicketHistoryItem {
   timestamp: number;
@@ -38,6 +39,7 @@ export interface Ticket {
   description: string;
   priority: TicketPriority;
   status: TicketStatus;
+  source?: TicketSource;
   name: string;
   email: string;
   phone?: string;
@@ -48,6 +50,9 @@ export interface Ticket {
   createdAt: number;
   updatedAt: number;
   history: TicketHistoryItem[];
+  archivedAt?: number;
+  archivedBy?: string;
+  managerEscalationId?: string;
 }
 
 export interface KnowledgeBase {
@@ -117,6 +122,7 @@ export interface CubboOrder {
     customer_email?: string; // Email do cliente associado ao pedido
     shipping_email?: string; // Email de entrega (usado na busca)
     customer_phone?: string; // Telefone do cliente associado ao pedido
+    customer_name?: string; // Nome do cliente associado ao pedido
     payment_method?: string; // Método de pagamento
     total_amount?: number; // Valor total do pedido
     currency?: string; // Moeda do pedido (ex: BRL, USD)
@@ -156,6 +162,11 @@ export interface Conversation {
   supportUserId?: string; // ID do SupportUser relacionado
   ticketId?: string; // ID do ticket criado a partir desta conversa
   archived?: boolean; // Se a conversa foi arquivada
+  archivedAt?: number;
+  archivedBy?: string;
+  deleted?: boolean; // Soft delete aplicado
+  deletedAt?: number;
+  deletedBy?: string;
   aiInsights?: ConversationAIInsights; // Insights gerados pelo Gemini AI
   feedback?: {
     rating?: number; // 1-5 estrelas (legado)
@@ -167,6 +178,35 @@ export interface Conversation {
   askedQuestions?: string[]; // Perguntas feitas pelo bot que não foram respondidas ou não encontraram resposta
   createdAt: number;
   updatedAt: number;
+}
+
+export type NotificationType = 'ticket' | 'conversation' | 'manager';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  entityId: string;
+  title: string;
+  summary: string;
+  status?: string;
+  createdAt: number;
+  customerName?: string;
+  customerEmail?: string;
+  meta?: Record<string, any>;
+}
+
+export interface SupportNotice {
+  id?: string;
+  title: string;
+  content: string; // HTML rico gerado pelo editor
+  active: boolean;
+  showOnHome: boolean;
+  showOnSupport: boolean;
+  targetCompanyIds: string[]; // vazio aplica para todas
+  createdAt: number;
+  updatedAt: number;
+  createdBy?: string;
+  updatedBy?: string;
 }
 
 export type FAQCategory = 'compra' | 'troca' | 'rastreio' | 'cancelamento' | 'reembolso' | 'sla' | 'geral';
@@ -243,6 +283,23 @@ export interface KnowledgeBaseEntry {
   companyId?: string; // ID da empresa (opcional para compatibilidade)
 }
 
+export interface DefaultResponse {
+  id?: string;
+  companyId: string; // Empresa que possui esta resposta padrão
+  question: string; // Pergunta padrão (normalizada)
+  answer: string; // Resposta padrão genérica
+  keywords: string[]; // Palavras-chave para matching
+  category?: string; // Categoria (opcional)
+  active: boolean; // Se está ativa
+  usageCount: number; // Quantas vezes foi usada
+  includeInLearning?: boolean; // Incluir no aprendizado do Gemini
+  includeInAutoLearning?: boolean; // Incluir no aprendizado automático
+  createdAt: number;
+  updatedAt: number;
+  deletedAt?: number;
+  deletedBy?: string;
+}
+
 // Multi-tenant types
 export interface Company {
   id?: string;
@@ -253,6 +310,7 @@ export interface Company {
   managerEmail: string;  // Email do gestor
   managerName: string;  // Nome do gestor
   managerAccessEnabled: boolean;  // Se gestor tem acesso
+  storeUrl?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -284,6 +342,65 @@ export interface SupportUser {
   storeUrl?: string; // URL da loja (atribuído automaticamente da empresa identificada)
   createdAt: number;
   updatedAt: number;
+}
+
+export type ManagerNotificationChannel = 'email' | 'in_app';
+
+export interface ManagerNotificationPreferences {
+  newOrders: boolean;
+  escalations: boolean;
+  celebrationFeed: boolean;
+  channels: ManagerNotificationChannel[];
+  mutedUntil?: number;
+}
+
+export interface ManagerProfile {
+  id?: string;
+  companyId: string;
+  name: string;
+  email: string;
+  notificationPreferences: ManagerNotificationPreferences;
+  createdAt: number;
+  updatedAt: number;
+  lastCelebrationSeenAt?: number;
+  timezone?: string;
+}
+
+export type ManagerEscalationStatus = 'aberto' | 'em_andamento' | 'resolvido' | 'cancelado';
+
+export interface ManagerEscalation {
+  id: string;
+  companyId: string;
+  orderNumber: string;
+  orderId?: string;
+  priority: 'alta';
+  status: ManagerEscalationStatus;
+  subject: string;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+  createdBy: string;
+  managerEmail: string;
+  ticketId: string;
+  lastAdminUpdateAt?: number;
+  lastAdminSummary?: string;
+}
+
+export type ManagerNotificationType = 'novo_pedido' | 'pedido_status' | 'escalation_atualizada';
+
+export interface ManagerNotification {
+  id: string;
+  companyId: string;
+  type: ManagerNotificationType;
+  title: string;
+  summary: string;
+  createdAt: number;
+  orderNumber?: string;
+  orderId?: string;
+  escalationId?: string;
+  status?: string;
+  readBy?: string[];
+  metadata?: Record<string, any>;
 }
 
 // AI Insights para conversas

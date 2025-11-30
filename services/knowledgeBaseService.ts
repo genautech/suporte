@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { KnowledgeBaseEntry } from '../types';
 import { supportService } from './supportService';
+import { companyService } from './companyService';
 import { Ticket } from '../types';
 
 const knowledgeBaseCollection = collection(db, 'knowledgeBase');
@@ -218,6 +219,21 @@ export const knowledgeBaseService = {
         return null;
       }
 
+      let resolvedCompanyId = ticket.companyId;
+      if (!resolvedCompanyId && ticket.email) {
+        try {
+          resolvedCompanyId = await companyService.getCompanyFromEmail(ticket.email);
+        } catch (companyError) {
+          console.warn('[knowledgeBaseService] Não foi possível identificar empresa do ticket, usando "general"', {
+            ticketId,
+            error: companyError instanceof Error ? companyError.message : String(companyError),
+          });
+        }
+      }
+      if (!resolvedCompanyId) {
+        resolvedCompanyId = 'general';
+      }
+
       // Extrair informações relevantes do ticket
       const title = `Solução para: ${ticket.subject}`;
       const content = `Problema: ${ticket.description}\n\nSolução: ${
@@ -236,6 +252,7 @@ export const knowledgeBaseService = {
         source: 'ticket',
         relatedTickets: [ticketId],
         verified: false, // Precisa ser verificado por admin
+        companyId: resolvedCompanyId,
       });
 
       return entryId;

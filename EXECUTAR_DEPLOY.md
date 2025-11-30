@@ -1,4 +1,36 @@
-# 🚀 Executar Deploy do Cubbo Auth Proxy
+# 🚀 Executar Deploy (Aplicação + Proxies)
+
+## Parte 1 — Aplicação principal (`suporte-lojinha`)
+
+1. **Entrar no diretório do projeto**
+   ```bash
+   cd /Users/genautech/suporte
+   ```
+2. **Verificar autenticação e projeto**
+   ```bash
+   gcloud auth login
+   gcloud config set project suporte-7e68b
+   ```
+3. **Rodar o pipeline automático**
+   ```bash
+   ./deploy-auto.sh
+   ```
+   - Faz build via Cloud Build.
+   - Publica a imagem `gcr.io/suporte-7e68b/suporte-lojinha:latest`.
+   - Atualiza o Cloud Run (`suporte-lojinha`) e valida que a URL final é `https://suporte-lojinha-409489811769.southamerica-east1.run.app`.
+   - Executa um `curl` rápido + imprime a revisão ativa (ex.: `suporte-lojinha-00033-tlx`).
+
+4. **Smoke test imediato**
+   ```bash
+   curl -I https://suporte-lojinha-409489811769.southamerica-east1.run.app
+   gcloud run services logs read suporte-lojinha --region southamerica-east1 --limit 50
+   ```
+
+> Alternativas: `./deploy.sh` (build + deploy + git) ou `./deploy-quick.sh` (reuso da última imagem).
+
+---
+
+## Parte 2 — Deploy do Cubbo Auth Proxy
 
 ## ⚠️ Autenticação Necessária
 

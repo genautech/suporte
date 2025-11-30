@@ -10,6 +10,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
+import { SupportNoticeBanner } from './SupportNoticeBanner';
 
 interface HomePageProps {
     onUserLoginClick?: () => void; // Mantido para compatibilidade, mas não será usado
@@ -212,7 +213,16 @@ export const HomePage: React.FC<HomePageProps> = ({ onUserLoginClick }) => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10 flex items-center justify-center p-4 sm:p-6">
+        <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10 flex flex-col items-center justify-center gap-6 p-4 sm:p-6">
+            <div className="w-full max-w-3xl">
+                <SupportNoticeBanner
+                    companyId="general"
+                    location="home"
+                    className="shadow-lg"
+                    title="Avisos importantes"
+                    description="Confira os comunicados antes de acessar o suporte."
+                />
+            </div>
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

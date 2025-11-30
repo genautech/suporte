@@ -53,3 +53,5 @@ git push origin $(git branch --show-current) || {
 echo "✅ Backup remoto concluído com sucesso!"
 echo "📊 Último commit: $(git log -1 --oneline)"
 
+
+

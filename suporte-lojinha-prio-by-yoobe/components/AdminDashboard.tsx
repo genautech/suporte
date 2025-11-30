@@ -149,7 +149,13 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
          <div className="flex h-screen bg-gray-100">
             {/* Sidebar */}
             <div className="w-64 bg-gray-800 text-white flex flex-col">
-                <div className="p-4 text-xl font-bold border-b border-gray-700">Admin Prio</div>
+                <div className="p-4 border-b border-gray-700">
+                    <div className="text-xl font-bold flex items-center gap-2">
+                        <span className="text-2xl">⚡</span>
+                        Suporte Yoobe
+                    </div>
+                    <p className="text-xs text-gray-300 mt-1">Painel Administrativo</p>
+                </div>
                 <nav className="flex-1 p-2">
                     <a onClick={() => setView('tickets')} className={`block p-3 rounded-lg cursor-pointer hover:bg-gray-700 ${view === 'tickets' ? 'bg-primary' : ''}`}>
                         Chamados de Suporte

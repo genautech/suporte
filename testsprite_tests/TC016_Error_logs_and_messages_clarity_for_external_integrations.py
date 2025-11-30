@@ -197,7 +197,7 @@ async def run_test():
 
         # --> Assertions to verify final state
         frame = context.pages[-1]
-        await expect(frame.locator('text=Admin Prio').first).to_be_visible(timeout=30000)
+        await expect(frame.locator('text=⚡ Suporte Yoobe').first).to_be_visible(timeout=30000)
         await expect(frame.locator('text=Chamados de Suporte').first).to_be_visible(timeout=30000)
         await expect(frame.locator('text=Configurações').first).to_be_visible(timeout=30000)
         await expect(frame.locator('text=Status do Sistema').first).to_be_visible(timeout=30000)

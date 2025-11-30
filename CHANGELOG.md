@@ -1,5 +1,48 @@
 # Changelog - Sistema de Suporte
 
+## [v2.3.0] - 2025-11-30
+
+### 🎉 Novas Funcionalidades
+
+#### Central de Notificações em Tempo Real
+- **NotificationCenterProvider** agrega tickets, conversas e alertas de gestores em um único fluxo (App + `DashboardHeader`).
+- **NotificationBell** entrega badges de não lidos, botão de silenciar áudio e leitura em lote para admins, gestores e usuários finais.
+- **Toasts com áudio leve** informam novos chamados/interações sem que o usuário precise atualizar a página.
+
+#### Avisos e Banner de Comunicação Dirigida
+- **AdminSupportNotices** cria banners ricos com editor WYSIWYG, filtros por empresa e flags `showOnHome`/`showOnSupport`.
+- **CompanyNoticePanel** permite avisos rápidos diretamente do cadastro da empresa.
+- **SupportNoticeBanner** exibe alertas contextuais no Home e no SupportArea, com botão de recolher e atalho para notificações.
+
+#### Biblioteca de Respostas Padrão
+- **AdminDefaultResponses** gerencia scripts por empresa (perguntas, resposta, palavras-chave, categoria, status).
+- Integração opcional com **KnowledgeBase** e **autoLearning** para promover respostas aprovadas ao treinamento do Gemini.
+- Registro de uso e filtros por empresa/busca para acelerar onboarding de novos atendentes.
+
+#### Escalonamento e Alertas para Gestores
+- **managerEscalationService** converte solicitações críticas em tickets priorizados e sincroniza status com o gestor.
+- **managerNotificationService** provê feed dedicado (`managerNotifications`) consumido no Dashboard do gestor.
+- **ManagerDashboard** ganhou abas para escalar pedidos, acompanhar status e configurar preferências individuais.
+
+#### Experiência do Gestor
+- **ManagerProfileService** armazena nome, e-mail, timezone e preferências de canais (in-app, email) por empresa.
+- **OrderCelebration** celebra os últimos pedidos e destaca ganho de receita de forma animada.
+- **orderCacheService** reduz latência ao guardar o último snapshot de pedidos por empresa no Firestore.
+
+### 🔧 Melhorias
+
+- SupportArea abre com o novo `SupportNoticeBanner`, mantendo avisos críticos visíveis antes das abas.
+- Tabs, cards e diálogos foram revisados para acessibilidade (botões maiores, estados de loading e placeholders empáticos).
+- Scripts `deploy-auto.sh`/`deploy.sh` receberam revisão final para apontar para `https://suporte-lojinha-409489811769.southamerica-east1.run.app` e validar o revision `suporte-lojinha-00033-tlx`.
+- Documentação reorganizada (README, DEPLOY.md, CHECKLIST, RESUMOS e specs) descreve o pipeline automático e as coleções recém-criadas (`supportNotices`, `managerNotifications`, `managerEscalations`, `defaultResponses`, `managerProfiles`, `companyOrdersCache`).
+
+### 🐛 Correções & Hardenings
+
+- Normalização extra em `notificationService` evita inconsistências quando `updatedAt` vem como `Timestamp` ou número.
+- `SupportArea`, `AdminDashboard` e `ManagerDashboard` agora protegidos contra dados `undefined` para evitar que salvamentos Firestore falhem.
+- Ajustes de segurança nos serviços novos garantem `localStorage` isolado por escopo e fallback quando permissões de áudio falham.
+- `deploy-auto.sh` aborta imediatamente se `cloudbuild.yaml` ou `Dockerfile` não estiverem presentes e denuncia URL divergente da esperada.
+
 ## [v1.8.0] - 2025-01-XX
 
 ### 🎉 Novas Funcionalidades

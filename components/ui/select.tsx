@@ -87,7 +87,6 @@ const SelectContent = React.forwardRef<
       )}
       style={{ zIndex: customZIndex || defaultZIndex }}
       position={position}
-      modal={false}
       {...props}
     >
       <SelectScrollUpButton />

@@ -111,3 +111,5 @@ curl -v --connect-timeout 30 https://api.github.com 2>&1 | grep -i "connect\|tim
 - Apenas a visualização de Pull Requests pode ser afetada
 - Operações Git via terminal continuam funcionando normalmente
 
+
+

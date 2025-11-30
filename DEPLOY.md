@@ -80,66 +80,46 @@ substitutions:
 
 ## Deploy Automático
 
-### Script Principal (`deploy.sh`)
+### 1. Script recomendado (`deploy-auto.sh`)
 
-O script `deploy.sh` faz build, deploy e atualiza Git automaticamente.
-
-#### Uso Básico
-
-```bash
-# Deploy completo (build + deploy + git)
-./deploy.sh
-```
-
-#### Opções Disponíveis
-
-```bash
-# Deploy sem atualizar Git
-./deploy.sh --skip-git
-
-# Deploy usando imagem existente (sem build)
-./deploy.sh --skip-build
-
-# Deploy sem build e sem Git
-./deploy.sh --skip-build --skip-git
-```
-
-#### O que o Script Faz
-
-1. ✅ Verifica se Git está inicializado
-2. ✅ Verifica se `cloudbuild.yaml` existe
-3. ✅ Faz build da imagem Docker (se não `--skip-build`)
-4. ✅ Faz deploy no Cloud Run
-5. ✅ Atualiza Git automaticamente (se não `--skip-git`):
-   - Adiciona arquivos (respeitando .gitignore)
-   - Verifica se `cloudbuild.yaml` não está sendo commitado
-   - Faz commit com mensagem automática
-   - Faz push para o branch atual
-
-### Script Rápido (`deploy-quick.sh`)
-
-Deploy rápido usando imagem existente:
-
-```bash
-./deploy-quick.sh
-```
-
-**Ideal para:** Deploys rápidos quando apenas código mudou e a imagem já foi buildada.
-
-### Script Automatizado (`deploy-auto.sh`)
-
-Script totalmente automatizado com validações completas:
+Fluxo end-to-end com validações, logs e pós-check automático.
 
 ```bash
 ./deploy-auto.sh
 ```
 
-**Recursos:**
-- Validações de pré-requisitos (gcloud, autenticação)
-- Build com validação de erros
-- Deploy com verificação de URL
-- Logs detalhados
-- Verificação pós-deploy
+Recursos principais:
+- ✅ Checa gcloud instalado, autenticação ativa e projeto correto.
+- ✅ Garante presença de `cloudbuild.yaml`/`Dockerfile` antes de começar.
+- ✅ Executa `gcloud builds submit` + `gcloud run deploy` usando a imagem `gcr.io/suporte-7e68b/suporte-lojinha:latest`.
+- ✅ Compara a URL retornada com `https://suporte-lojinha-409489811769.southamerica-east1.run.app`.
+- ✅ Executa `curl` simples para confirmar HTTP 200 e imprime a revisão ativa (`suporte-lojinha-00033-tlx` no marco v2.3.0).
+
+### 2. Script tradicional (`deploy.sh`)
+
+Mantém o fluxo completo (build + deploy + git) porém sem os checks extra.
+
+```bash
+# Deploy completo (build + deploy + git)
+./deploy.sh
+
+# Variantes
+./deploy.sh --skip-git
+./deploy.sh --skip-build
+./deploy.sh --skip-build --skip-git
+```
+
+Usar quando precisar de controle fino sobre build/push mas ainda quer commit automático.
+
+### 3. Script rápido (`deploy-quick.sh`)
+
+Usa a última imagem já publicada no Container Registry e apenas atualiza o Cloud Run.
+
+```bash
+./deploy-quick.sh
+```
+
+Ideal para pequenos ajustes de configuração quando o build anterior já está pronto.
 
 ---
 
@@ -274,6 +254,13 @@ gcloud run services logs read suporte-lojinha \
 - ✅ Chatbot funcionando
 - ✅ Criação de tickets
 - ✅ Busca de pedidos
+
+### 5. Smoke tests das novidades v2.3.0
+
+- 🔔 Verificar `NotificationBell` (badge ↑ ao enviar novo ticket/conversa, botão de mute e "Marcar tudo").  
+- 📣 Criar banner em `AdminSupportNotices` e confirmar exibição imediata no `SupportNoticeBanner`.  
+- 🧠 Cadastrar resposta em `AdminDefaultResponses` (com *Incluir no aprendizado*) e validar entrada correspondente na base de conhecimento.  
+- 🚨 Abrir escalonamento via `ManagerDashboard` e conferir alertas em tempo real para o gestor/admin.
 
 ---
 

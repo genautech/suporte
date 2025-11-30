@@ -30,3 +30,5 @@ echo ""
 # Usar preview do Vite que serve os arquivos buildados
 npm run preview
 
+
+

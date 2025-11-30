@@ -9,13 +9,27 @@
 
 ## Configuração Local
 
-### 1. Instalar Dependências
+### 1. Setup Automatizado (macOS recomendado)
+
+```bash
+npm run setup:local
+```
+
+Este comando:
+- Valida/instala Homebrew, Node 20+ e Firebase CLI.
+- Executa `npm install`.
+- Cria/sincroniza `.env.local`.
+- Aplica regras/índices no emulador local.
+
+> Dica: use `SKIP_BREW_CHECK=1 npm run setup:local` se já possuir todas as ferramentas instaladas.
+
+### 2. Instalar Dependências (fluxo manual)
 
 ```bash
 npm install
 ```
 
-### 2. Configurar Variáveis de Ambiente
+### 3. Configurar Variáveis de Ambiente
 
 Crie um arquivo `.env.local` na raiz do projeto com:
 
@@ -25,10 +39,17 @@ GEMINI_API_KEY=sua_chave_api_aqui
 
 **Nota:** Para desenvolvimento local, você pode usar `.env.local`. Este arquivo está no `.gitignore` e não será commitado.
 
-### 3. Executar em Desenvolvimento
+### 4. Executar em Desenvolvimento
 
 ```bash
 npm run dev
+```
+
+Para usar Firestore/Authentication locais:
+
+```bash
+npm run firebase:emulators   # Terminal 1
+npm run dev                  # Terminal 2
 ```
 
 A aplicação estará disponível em `http://localhost:3000`

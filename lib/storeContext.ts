@@ -1,5 +1,6 @@
 const STORE_URL_KEY = 'suporte_store_url';
 const STORE_COMPANY_ID_KEY = 'suporte_store_company_id';
+const STORE_MANAGER_EMAIL_KEY = 'suporte_store_manager_email';
 
 const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
 
@@ -86,9 +87,12 @@ export const storeContext = {
   setStoredStoreUrl: (url: string | null) => setItem(STORE_URL_KEY, url),
   getStoredCompanyId: () => getItem(STORE_COMPANY_ID_KEY),
   setStoredCompanyId: (companyId: string | null) => setItem(STORE_COMPANY_ID_KEY, companyId),
+  getStoredManagerEmail: () => getItem(STORE_MANAGER_EMAIL_KEY),
+  setStoredManagerEmail: (email: string | null) => setItem(STORE_MANAGER_EMAIL_KEY, email),
   clear: () => {
     setItem(STORE_URL_KEY, null);
     setItem(STORE_COMPANY_ID_KEY, null);
+    setItem(STORE_MANAGER_EMAIL_KEY, null);
   },
   extractHost,
 };

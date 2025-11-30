@@ -1,111 +1,99 @@
-# ✅ Resumo Final - Deploy e Configuração
+# ✅ Próximos Passos – Marco v2.3.0
 
-**Data:** 2025-11-06  
-**Status:** ✅ Deploy Completo - Pronto para Configuração Final
-
-## 🎉 Deploy Realizado com Sucesso
-
-**URL de Produção:** https://suporte-lojinha-409489811769.southamerica-east1.run.app  
-**Revisão:** `suporte-lojinha-00011-4wm`  
-**Status:** ✅ Servindo 100% do tráfego
-
-## 📦 Features Deployadas
-
-Todas as novas features foram deployadas com sucesso:
-
-1. ✅ **Sistema de FAQ Completo**
-   - Área de FAQ para clientes
-   - Busca inteligente com Gemini
-   - CRUD completo no admin
-
-2. ✅ **Base de Conhecimento**
-   - Gerenciamento completo no admin
-   - Sistema de verificação
-   - Aprendizado automático
-
-3. ✅ **Formulário Dinâmico de Tickets**
-   - 9 assuntos pré-configurados
-   - Validação específica por tipo
-   - Preview de pedido
-
-4. ✅ **Sistema de Conversas**
-   - Histórico persistente
-   - Reconhecimento de usuários retornantes
-   - Sistema de feedback
-
-5. ✅ **Melhorias no Chatbot**
-   - Modo inline no SupportArea
-   - Integração com FAQ inteligente
-   - Contexto enriquecido
-
-## 📋 Arquivos Criados para Próximos Passos
-
-### Configuração Firebase
-- ✅ `firebase.json` - Configuração do Firebase
-- ✅ `firestore.indexes.json` - Definição dos índices
-- ✅ `CRIAR_INDICES_FIRESTORE.sh` - Script para criar índices
-
-### Documentação
-- ✅ `GUIA_RAPIDO_PROXIMOS_PASSOS.md` - Guia rápido (LEIA ESTE PRIMEIRO)
-- ✅ `INSTRUCOES_COMPLETAS_INDICES.md` - Instruções detalhadas de índices
-- ✅ `TESTES_PRODUCAO.md` - Checklist de testes
-- ✅ `RESUMO_DEPLOY.md` - Resumo completo do deploy
-
-## 🚀 Próximos Passos (Ordem de Execução)
-
-### 1️⃣ Criar Índices Firestore (5 min)
-
-```bash
-cd /Users/genautech/suporte
-firebase login
-./CRIAR_INDICES_FIRESTORE.sh
-```
-
-**Ou siga:** `INSTRUCOES_COMPLETAS_INDICES.md`
-
-### 2️⃣ Popular FAQ (2 min)
-
-1. Acesse: https://suporte-lojinha-409489811769.southamerica-east1.run.app
-2. Login como Admin
-3. Menu → FAQ
-4. Clique em "Popular FAQ"
-5. Aguarde carregamento
-
-### 3️⃣ Testar Funcionalidades (15-20 min)
-
-Siga o checklist em: `TESTES_PRODUCAO.md`
-
-## 📊 Status das Tarefas
-
-| Tarefa | Status | Arquivo de Referência |
-|--------|--------|----------------------|
-| Correção de Erros | ✅ | - |
-| Build | ✅ | - |
-| Deploy | ✅ | `RESUMO_DEPLOY.md` |
-| Índices Firestore | ⏳ | `INSTRUCOES_COMPLETAS_INDICES.md` |
-| Popular FAQ | ⏳ | `GUIA_RAPIDO_PROXIMOS_PASSOS.md` |
-| Testes | ⏳ | `TESTES_PRODUCAO.md` |
-
-## 🎯 Resultado Esperado
-
-Após completar os próximos passos:
-
-- ✅ Aplicação funcionando 100% em produção
-- ✅ FAQ populado com 40+ perguntas
-- ✅ Índices Firestore criados (melhor performance)
-- ✅ Todas as funcionalidades testadas e funcionando
-
-## 📞 Suporte
-
-Se encontrar problemas:
-
-1. Verifique os arquivos de documentação criados
-2. Consulte `RESUMO_DEPLOY.md` para detalhes técnicos
-3. Verifique logs no Console Firebase
-4. Verifique console do navegador para erros
+**Data de corte:** 30/11/2025  
+**Status:** ✅ Deploy homologado / aguardando pós-checks
 
 ---
 
-**Deploy realizado em:** 2025-11-06  
-**Próxima ação:** Executar criação de índices e popular FAQ
+## 🎉 O que já está pronto
+
+- Revisão `suporte-lojinha-00033-tlx` servindo 100% do tráfego em produção.  
+- Novas frentes liberadas: central de notificações, banners/avisos, biblioteca de respostas padrão, escalonamento para gestores, OrderCelebration e cache de pedidos.  
+- Documentação e scripts (`deploy-auto.sh`, `DEPLOY.md`, `CHANGELOG.md`) atualizados para o marco `v2.3.0`.
+
+---
+
+## 🚀 Próximas ações (ordem sugerida)
+
+| # | Tarefa | Responsável | Status |
+|---|--------|-------------|--------|
+| 1 | **Rodar `./deploy-auto.sh`** (caso ainda não tenha executado no ambiente alvo) | Tech | ⏳ |
+| 2 | **Criar/confirmar índices Firestore** (`tickets`, `conversations`, `supportNotices`, `managerNotifications`, `managerEscalations`, `defaultResponses`) | Tech | ⏳ |
+| 3 | **Popular avisos iniciais** em `AdminSupportNotices` (banner geral + comunicados por empresa) | Suporte | ⏳ |
+| 4 | **Cadastrar respostas padrão críticas** (macro de SLA, rastreio, troca) marcando “Incluir no aprendizado” | Conteúdo | ⏳ |
+| 5 | **Validar notificações**: abrir ticket/conversa/escalation e garantir badges/toasts em admin/gestor/cliente | QA | ⏳ |
+| 6 | **Testar fluxo do gestor**: login `/manager`, OrderCelebration, preferências e abertura de escalonamento | QA | ⏳ |
+| 7 | **Executar smoke tests do cliente**: banner no SupportArea, chatbot, formulário de ticket, pedidos e FAQ | QA | ⏳ |
+| 8 | **Registrar resultado** em `DEPLOY_CONCLUIDO.md` + comunicar stakeholders | Tech Lead | ⏳ |
+
+---
+
+## 🔎 Detalhamento das validações
+
+### 1. Deploy automático
+```bash
+cd /Users/genautech/suporte
+./deploy-auto.sh
+```
+- Confirma gcloud/projeto, sobe imagem, publica em Cloud Run e checa URL.
+- Logs ficam em `deploy-output.log`.
+
+### 2. Índices Firestore
+Use `firebase firestore:indexes` ou o script existente (`CRIAR_INDICES_FIRESTORE.sh`) adicionando:
+- `tickets`: `email` + `updatedAt`
+- `conversations`: `userId` + `updatedAt`
+- `supportNotices`: `targetCompanyIds` + `updatedAt`
+- `managerNotifications`: `companyId` + `createdAt`
+- `managerEscalations`: `companyId` + `createdAt`
+- `defaultResponses`: `companyId` + `usageCount`
+
+### 3. Avisos/Banners
+1. Abrir painel admin → “Avisos do Suporte”.  
+2. Criar banner geral (ex.: manutenção programada) marcado para `Home` + `Área do cliente`.  
+3. Criar aviso direcionado para uma empresa via `CompanyNoticePanel`.  
+4. Validar exibição no `HomePage` (visitante) e `SupportArea` (cliente).
+
+### 4. Respostas Padrão
+1. Abrir “Respostas Padrão”.  
+2. Criar scripts críticos (SLA, cobrança, rastreio).  
+3. Marcar “Incluir no aprendizado” para ao menos uma delas.  
+4. Checar se entrada correspondente aparece como verificada na base de conhecimento (status `verified: true`).
+
+### 5. Notificações / Escalonamentos
+- Criar ticket de um cliente real → badge no admin deve subir + toast tocando som (se não silenciado).  
+- Iniciar conversa no chatbot → admin recebe notificação “Nova interação”.  
+- Logar como gestor e abrir escalonamento → admin vê alerta “Chamado atualizado”; gestor recebe feed em `NotificationBell`.  
+- Testar botão “Marcar tudo como lido” + switch de mute.
+
+### 6. Fluxo do Gestor
+- Login via `/manager`.  
+- Conferir `OrderCelebration` (últimos pedidos) e cards de estatísticas.  
+- Editar preferências de notificação (canais/temas) e validar persistência.  
+- Abrir modal de escalonamento direto da listagem de pedidos; acompanhar status (aberto → em andamento → resolvido).
+
+### 7. Experiência do Cliente
+- Login normal, garantir que o banner apareça antes das abas.  
+- Abrir chat, criar ticket e navegar nos pedidos.  
+- Certificar-se de que as notificações do cliente refletem os tickets recém-criados.
+
+---
+
+## 📎 Materiais úteis
+
+- `CHANGELOG.md` – histórico completo (seção `v2.3.0`).  
+- `RESUMO_ATUALIZACOES.md` – detalhes técnicos do release.  
+- `DEPLOY.md` – guia completo do pipeline.  
+- `DEPLOY_CONCLUIDO.md` – status consolidado pós-deploy.  
+- `docs/specs/05-services.md` e `docs/specs/09-features.md` – referências sobre novos serviços/funcionalidades.
+
+---
+
+## ✅ Quando considerar a etapa concluída?
+
+- Todos os itens da tabela “Próximas ações” marcados como concluídos.  
+- Smoke tests executados e documentados (sem regressões críticas).  
+- Cloud Run servindo `suporte-lojinha-00033-tlx` com logs limpos nas últimas 24h.  
+- Comunicação do release enviada ao time (linkando este documento + changelog).
+
+> Após esses passos, o marco `v2.3.0` é oficialmente o baseline do ambiente de produção. Parabéns! 🎉
 

@@ -6,7 +6,6 @@ import {
   getDoc,
   addDoc,
   updateDoc,
-  deleteDoc,
   doc,
   query,
   where,
@@ -28,6 +27,10 @@ const conversationFromFirestore = (docSnapshot: any): Conversation => {
     ...data,
     createdAt: (data.createdAt as Timestamp)?.toDate().getTime() || Date.now(),
     updatedAt: (data.updatedAt as Timestamp)?.toDate().getTime() || Date.now(),
+    archived: data.archived || false,
+    archivedAt: data.archivedAt ? (data.archivedAt as Timestamp)?.toDate().getTime() : undefined,
+    deleted: data.deleted || false,
+    deletedAt: data.deletedAt ? (data.deletedAt as Timestamp)?.toDate().getTime() : undefined,
   } as Conversation;
 };
 
@@ -65,6 +68,8 @@ export const conversationService = {
         resolved: false,
         attempts: 0,
         companyId: companyId || 'general', // Adicionar companyId
+        archived: false,
+        deleted: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -148,7 +153,9 @@ export const conversationService = {
       );
 
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(conversationFromFirestore);
+      return querySnapshot.docs
+        .map(conversationFromFirestore)
+        .filter(conv => !conv.deleted);
     } catch (error) {
       console.error('[conversationService] Erro ao buscar histórico:', error);
       return [];
@@ -366,6 +373,9 @@ export const conversationService = {
       const querySnapshot = await getDocs(q);
       let conversations = querySnapshot.docs.map(conversationFromFirestore);
       
+      // Remover conversas com soft delete
+      conversations = conversations.filter(conv => !conv.deleted);
+
       // Filtrar arquivadas se não incluir
       if (!includeArchived) {
         conversations = conversations.filter(conv => !conv.archived);
@@ -410,7 +420,9 @@ export const conversationService = {
         new Map(allDocs.map(doc => [doc.id, doc])).values()
       );
       
-      return uniqueDocs.map(conversationFromFirestore);
+      return uniqueDocs
+        .map(conversationFromFirestore)
+        .filter(conv => !conv.deleted);
     } catch (error) {
       console.error('[conversationService] Erro ao buscar conversas por empresa:', error);
       return [];
@@ -455,6 +467,7 @@ export const conversationService = {
     try {
       await conversationService.updateConversation(conversationId, {
         archived: true,
+        archivedAt: serverTimestamp(),
       });
     } catch (error) {
       console.error('[conversationService] Erro ao arquivar conversa:', error);
@@ -467,6 +480,7 @@ export const conversationService = {
     try {
       await conversationService.updateConversation(conversationId, {
         archived: false,
+        archivedAt: null,
       });
     } catch (error) {
       console.error('[conversationService] Erro ao desarquivar conversa:', error);
@@ -490,7 +504,13 @@ export const conversationService = {
   deleteConversation: async (conversationId: string): Promise<void> => {
     try {
       const conversationRef = doc(conversationsCollection, conversationId);
-      await deleteDoc(conversationRef);
+      await updateDoc(conversationRef, {
+        archived: true,
+        archivedAt: serverTimestamp(),
+        deleted: true,
+        deletedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     } catch (error) {
       console.error('[conversationService] Erro ao excluir conversa:', error);
       throw error;
@@ -504,6 +524,25 @@ export const conversationService = {
     } catch (error) {
       console.error('[conversationService] Erro ao excluir conversas:', error);
       throw error;
+    }
+  },
+
+  // Contar conversas arquivadas (desconsiderando deletadas)
+  getArchivedConversationCount: async (): Promise<number> => {
+    try {
+      const q = query(conversationsCollection, where('archived', '==', true));
+      const snapshot = await getDocs(q);
+      let count = 0;
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (!data.deleted) {
+          count += 1;
+        }
+      });
+      return count;
+    } catch (error) {
+      console.error('[conversationService] Erro ao contar conversas arquivadas:', error);
+      return 0;
     }
   },
 
