@@ -433,7 +433,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                     // Não buscar pedidos - apenas solicitar número do pedido
                     addMessage("Para que eu possa te ajudar, preciso do número do pedido. Por favor, informe o código do pedido.", MessageSender.BOT);
                     break;
-                case 'trackOrder':
+                case 'trackOrder': {
                     // Não buscar pedidos - apenas abrir chamado com o número do pedido fornecido
                     const { orderId } = call.args;
                     ticketOpened = true;
@@ -460,6 +460,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                         </Dialog>
                     );
                     break;
+                }
                 case 'initiateExchange':
                     renderComponentInChat(
                         <ExchangeForm 
@@ -473,7 +474,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                         />
                     );
                     break;
-                case 'openSupportTicket':
+                case 'openSupportTicket': {
                     ticketOpened = true;
                     setAttemptsWithoutResolution(0); // Reset ao abrir chamado
                     const orderNumberFromCall = (call.args.orderNumber as string | undefined);
@@ -501,6 +502,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                         </Dialog>
                     );
                     break;
+                }
                 case 'searchFAQ':
                     // Busca inteligente de FAQ usando Gemini
                     const query = call.args.query as string;
