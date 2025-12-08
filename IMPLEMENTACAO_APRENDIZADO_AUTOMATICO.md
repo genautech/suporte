@@ -343,3 +343,8 @@ const TARGET_CONTEXT_LENGTH = 6000; // Tamanho ideal
 
 
 
+
+
+
+
+

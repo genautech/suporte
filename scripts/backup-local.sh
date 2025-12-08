@@ -67,3 +67,8 @@ echo "📊 Tamanho: $(du -h "backup_$TIMESTAMP.tar.gz" | cut -f1)"
 
 
 
+
+
+
+
+

@@ -4,7 +4,7 @@
 
 - **Data da revisão:** 30/11/2025  
 - **Serviço:** `suporte-lojinha`  
-- **Revisão Cloud Run:** `suporte-lojinha-00054-ktq` (build `767e0cdf-8c84-4ceb-bb06-56772a308b90`)  
+- **Revisão Cloud Run:** `suporte-lojinha-00055-jt4` (build `9ca92978-9138-4975-9163-4dd23d2f9465`)  
 - **URL produção:** https://suporte-lojinha-409489811769.southamerica-east1.run.app  
 - **Status:** ✅ Live e servindo 100% do tráfego
 

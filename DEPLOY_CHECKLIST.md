@@ -132,3 +132,8 @@ Conferir todas as entregas do marco v2.3.0 (notificações em tempo real, banner
 
 > Concluído este checklist, o ambiente está pronto para etiquetar `v2.3.0` e comunicar o release.
 
+
+
+
+
+

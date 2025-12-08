@@ -7,7 +7,7 @@
 
 ## 🎉 O que já está pronto
 
-- Revisão `suporte-lojinha-00054-ktq` servindo 100% do tráfego em produção.  
+- Revisão `suporte-lojinha-00055-jt4` servindo 100% do tráfego em produção.  
 - Novas frentes liberadas: central de notificações, banners/avisos, biblioteca de respostas padrão, escalonamento para gestores, OrderCelebration e cache de pedidos.  
 - Documentação e scripts (`deploy-auto.sh`, `DEPLOY.md`, `CHANGELOG.md`) atualizados para o marco `v2.3.0`.
 
@@ -17,7 +17,7 @@
 
 | # | Tarefa | Responsável | Status |
 |---|--------|-------------|--------|
-| 1 | **Rodar `./deploy-auto.sh`** (caso ainda não tenha executado no ambiente alvo) | Tech | ⏳ |
+| 1 | **Rodar `./deploy-auto.sh`** (caso ainda não tenha executado no ambiente alvo) | Tech | ✅ |
 | 2 | **Criar/confirmar índices Firestore** (`tickets`, `conversations`, `supportNotices`, `managerNotifications`, `managerEscalations`, `defaultResponses`) | Tech | ⏳ |
 | 3 | **Popular avisos iniciais** em `AdminSupportNotices` (banner geral + comunicados por empresa) | Suporte | ⏳ |
 | 4 | **Cadastrar respostas padrão críticas** (macro de SLA, rastreio, troca) marcando “Incluir no aprendizado” | Conteúdo | ⏳ |
@@ -69,6 +69,7 @@ Use `firebase firestore:indexes` ou o script existente (`CRIAR_INDICES_FIRESTORE
 - Login via `/manager`.  
 - Conferir `OrderCelebration` (últimos pedidos) e cards de estatísticas.  
 - Editar preferências de notificação (canais/temas) e validar persistência.  
+- Abrir a aba **Pedidos** e confirmar que a listagem retorna resultados ao buscar clientes com `customer_email` *ou* `shipping_email` preenchidos (novo fallback do `findOrdersByCustomer`).  
 - Abrir modal de escalonamento direto da listagem de pedidos; acompanhar status (aberto → em andamento → resolvido).
 
 ### 7. Experiência do Cliente
@@ -92,7 +93,7 @@ Use `firebase firestore:indexes` ou o script existente (`CRIAR_INDICES_FIRESTORE
 
 - Todos os itens da tabela “Próximas ações” marcados como concluídos.  
 - Smoke tests executados e documentados (sem regressões críticas).  
-- Cloud Run servindo `suporte-lojinha-00033-tlx` com logs limpos nas últimas 24h.  
+- Cloud Run servindo `suporte-lojinha-00055-jt4` com logs limpos nas últimas 24h.  
 - Comunicação do release enviada ao time (linkando este documento + changelog).
 
 > Após esses passos, o marco `v2.3.0` é oficialmente o baseline do ambiente de produção. Parabéns! 🎉

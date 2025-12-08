@@ -56,3 +56,8 @@ grep -E "^VITE_" "$ENV_LOCAL" | sed 's/=.*/=***/' || echo "  Nenhuma variável V
 
 
 
+
+
+
+
+

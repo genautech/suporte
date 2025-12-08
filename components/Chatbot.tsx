@@ -1,7 +1,7 @@
 // Fix: Implement the Chatbot component.
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Message, MessageSender, ConversationMessage, CubboOrder } from '../types';
+import { Message, MessageSender, ConversationMessage } from '../types';
 import { getGeminiResponse, searchIntelligentFAQ } from '../services/geminiService';
 import { supportService } from '../services/supportService';
 import { conversationService } from '../services/conversationService';
@@ -14,10 +14,7 @@ import { storageService } from '../services/storageService';
 import { MessageIcon, CloseIcon, SendIcon, UserIcon, BotIcon, CopyIcon } from './Icons';
 import { ExchangeForm } from './ExchangeForm';
 import { SupportTicketFormAdvanced } from './SupportTicketFormAdvanced';
-import { OrderList } from './OrderList';
-import { EmailRequestModal } from './EmailRequestModal';
 import { ConversationFeedback } from './ConversationFeedback';
-import { OrderSelectionModal } from './OrderSelectionModal';
 import { CodeBlock } from './CodeBlock';
 import { GenerateContentResponse } from '@google/genai';
 import { Button } from './ui/button';
@@ -37,8 +34,6 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [emailRequestModal, setEmailRequestModal] = useState<{ orderId?: string; reason?: string } | null>(null);
-    const [pendingOrderSearch, setPendingOrderSearch] = useState<string | null>(null);
     const [sessionId, setSessionId] = useState<string>('');
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     const [attemptsWithoutResolution, setAttemptsWithoutResolution] = useState(0);
@@ -47,8 +42,6 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
     const [conversationHistory, setConversationHistory] = useState<any[]>([]);
     const [showFeedback, setShowFeedback] = useState(false);
     const [companyGreeting, setCompanyGreeting] = useState<string>('Olá! 👋 Sou o assistente virtual. Como posso te ajudar hoje?');
-    const [selectedOrders, setSelectedOrders] = useState<CubboOrder[]>([]);
-    const [showOrderSelection, setShowOrderSelection] = useState(false);
     const [botMessagesWithoutReply, setBotMessagesWithoutReply] = useState(0);
     const [isSearching, setIsSearching] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -123,12 +116,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
         if (user.email) {
             Promise.all([
                 conversationService.getLastConversation(user.email),
-                supportService.getTicketsByUser({ email: user.email, phone: user.phone }),
-                supportService.findOrdersByCustomer(
-                    { email: user.email, phone: user.phone },
-                    { limit: 5, companyId, useCache: true }
-                )
-            ]).then(([lastConv, tickets, orders]) => {
+                supportService.getTicketsByUser({ email: user.email, phone: user.phone })
+            ]).then(([lastConv, tickets]) => {
                 if (lastConv) {
                     setIsReturningUser(true);
                     // Carregar histórico recente
@@ -137,29 +126,17 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
                     });
                 }
                 
-                // Armazenar tickets e pedidos para uso na mensagem inicial
+                // Armazenar tickets para uso na mensagem inicial
                 // Filtrar apenas tickets não resolvidos
                 const unresolvedTickets = tickets.filter(t => 
                     t.status !== 'resolvido' && t.status !== 'fechado' && t.status !== 'arquivado'
                 );
-                
-                // Pedidos recentes (últimos 30 dias)
-                const recentOrders = orders.filter(order => {
-                    if (!order.created_at) return false;
-                    const orderDate = new Date(order.created_at);
-                    const thirtyDaysAgo = new Date();
-                    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                    return orderDate >= thirtyDaysAgo;
-                }).slice(0, 3); // Limitar a 3 pedidos mais recentes
-                
-                // Armazenar no estado para uso na mensagem inicial
-                if (unresolvedTickets.length > 0 || recentOrders.length > 0) {
-                    // Adicionar contexto ao conversationHistory para uso na mensagem inicial
+
+                if (unresolvedTickets.length > 0) {
                     setConversationHistory(prev => [
                         ...prev,
                         {
                             unresolvedTickets,
-                            recentOrders,
                         } as any
                     ]);
                 }
@@ -174,9 +151,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
             let welcomeMessage = companyGreeting;
             
             // Buscar contexto de aprendizado (tickets não resolvidos e pedidos recentes)
-            const contextData = conversationHistory.find((h: any) => h.unresolvedTickets || h.recentOrders);
+            const contextData = conversationHistory.find((h: any) => h.unresolvedTickets);
             const unresolvedTickets = contextData?.unresolvedTickets || [];
-            const recentOrders = contextData?.recentOrders || [];
             
             if (isReturningUser && user.name) {
                 welcomeMessage = `${companyGreeting}\n\nOlá novamente, ${user.name}! 👋 Que bom te ver de volta!`;
@@ -192,21 +168,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ user, onTicketCreated, inline 
                 }
             }
             
-            if (recentOrders.length > 0) {
-                if (unresolvedTickets.length > 0) {
-                    welcomeMessage += `\n\n📦 Também encontrei ${recentOrders.length} pedido(s) recente(s) associado(s) ao seu email.`;
-                } else {
-                    welcomeMessage += `\n\n📦 Encontrei ${recentOrders.length} pedido(s) recente(s) associado(s) ao seu email.`;
-                }
-                if (recentOrders.length === 1) {
-                    welcomeMessage += ` Gostaria de rastrear o pedido ${recentOrders[0].order_number}?`;
-                } else {
-                    const orderNumbers = recentOrders.slice(0, 3).map(o => o.order_number).join(', ');
-                    welcomeMessage += ` Gostaria de rastrear algum deles (${orderNumbers}${recentOrders.length > 3 ? '...' : ''})?`;
-                }
-            }
-            
-            if (unresolvedTickets.length === 0 && recentOrders.length === 0) {
+            if (unresolvedTickets.length === 0) {
                 welcomeMessage += '\n\nVocê pode rastrear um pedido, solicitar uma troca ou tirar dúvidas.';
             } else {
                 welcomeMessage += '\n\nOu se preferir, posso ajudar com outras questões!';
@@ -452,7 +414,6 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
     
     const handleFunctionCall = async (response: GenerateContentResponse) => {
         const functionCalls = response.functionCalls;
-        let orderFound = false;
         let ticketOpened = false;
         
         if (!functionCalls || functionCalls.length === 0) {
@@ -460,7 +421,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                 addMessage(response.text, MessageSender.BOT);
             }
             // Incrementar tentativas se não encontrou solução
-            if (!orderFound && !ticketOpened) {
+            if (!ticketOpened) {
                 setAttemptsWithoutResolution(prev => prev + 1);
             }
             return;
@@ -469,272 +430,35 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
         for (const call of functionCalls) {
             switch (call.name) {
                 case 'findCustomerOrders':
-                    setIsSearching(true);
-                    try {
-                        const orders = await supportService.findOrdersByCustomer(
-                            {
-                                email: user.email || null,
-                                phone: user.phone || null
-                            },
-                            { limit: 5, companyId, useCache: true }
-                        );
-                        setIsSearching(false);
-                        
-                        if (orders.length === 0) {
-                            addMessage("Não encontrei nenhum pedido associado ao seu email ou telefone. Verifique se os dados estão corretos ou entre em contato conosco.", MessageSender.BOT);
-                            setAttemptsWithoutResolution(prev => prev + 1);
-                        } else {
-                            orderFound = true;
-                            setAttemptsWithoutResolution(0); // Reset ao encontrar pedidos
-                            const ordersText = orders.length === 1 
-                                ? `Encontrei 1 pedido seu:` 
-                                : `Encontrei ${orders.length} pedidos seus:`;
-                            addMessage(ordersText, MessageSender.BOT);
-                            
-                            // Renderizar componente com lista de pedidos
-                            renderComponentInChat(<OrderList orders={orders} />);
-                            
-                            // Adicionar mensagem com resumo
-                            const summary = orders.map(order => {
-                                const date = new Date(order.created_at);
-                                const formattedDate = date.toLocaleDateString('pt-BR');
-                                return `• Pedido ${order.order_number} - ${order.status} (${formattedDate})`;
-                            }).join('\n');
-                            
-                            addMessage(`\n${summary}\n\nVocê pode perguntar sobre um pedido específico informando o número do pedido.`, MessageSender.BOT);
-                        }
-                    } catch (error) {
-                        setIsSearching(false);
-                        console.error("Error finding customer orders:", error);
-                        addMessage("Desculpe, ocorreu um erro ao buscar seus pedidos. Por favor, tente novamente ou entre em contato conosco.", MessageSender.BOT);
-                    }
+                    // Não buscar pedidos - apenas solicitar número do pedido
+                    addMessage("Para que eu possa te ajudar, preciso do número do pedido. Por favor, informe o código do pedido.", MessageSender.BOT);
                     break;
                 case 'trackOrder':
-                    const { orderId, customerEmail } = call.args;
-                    
-                    // Se Gemini forneceu apenas email (sem orderId), usar findCustomerOrders ao invés de trackOrder
-                    if (!orderId && customerEmail) {
-                        // Confirmar email antes de buscar
-                        const providedEmail = customerEmail as string;
-                        const emailToUse = providedEmail.toLowerCase().trim();
-                        const userEmail = user.email.toLowerCase().trim();
-                        
-                        if (emailToUse !== userEmail) {
-                            addMessage(`Você está logado com ${user.email}, mas forneceu ${providedEmail}. Deseja buscar pedidos com qual email?`, MessageSender.BOT);
-                            // Por enquanto, usar o email fornecido mas avisar
-                            addMessage(`Buscando pedidos com o email ${providedEmail}... 🔍`, MessageSender.BOT);
-                        } else {
-                            addMessage(`Você está logado com ${user.email}. Buscando seus pedidos... 🔍`, MessageSender.BOT);
-                        }
-                        
-                        // Usar findCustomerOrders quando apenas email fornecido
-                        setIsSearching(true);
-                        try {
-                            const customerOrders = await supportService.findOrdersByCustomer(
-                                { email: emailToUse },
-                                { limit: 5, companyId, useCache: true }
-                            );
-                            setIsSearching(false);
-                            if (customerOrders && customerOrders.length > 0) {
-                                if (customerOrders.length > 1) {
-                                    // Múltiplos pedidos encontrados - exibir modal de seleção
-                                    setSelectedOrders(customerOrders);
-                                    setShowOrderSelection(true);
-                                    addMessage(`Encontrei ${customerOrders.length} pedidos associados ao email ${emailToUse}. Por favor, selecione qual pedido deseja consultar.`, MessageSender.BOT);
-                                } else {
-                                    // Apenas um pedido encontrado - exibir diretamente
-                                    const singleOrder = customerOrders[0];
-                                    renderComponentInChat(<OrderList orders={[singleOrder]} />);
-                                    const orderDetails = supportService.formatOrderDetails(singleOrder);
-                                    addMessage(`Encontrei seu pedido!\n\n${orderDetails}`, MessageSender.BOT);
-                                    if (singleOrder.order_number && !mentionedOrderNumbers.includes(singleOrder.order_number)) {
-                                        setMentionedOrderNumbers(prev => [...prev, singleOrder.order_number]);
-                                    }
-                                }
-                            } else {
-                                addMessage(`Não encontrei pedidos para o email ${emailToUse}. Este é o mesmo email usado na compra? Pode verificar se o email está correto?`, MessageSender.BOT);
-                            }
-                        } catch (error) {
-                            setIsSearching(false);
-                            console.error("Error finding customer orders:", error);
-                            addMessage("Desculpe, ocorreu um erro ao buscar seus pedidos. Por favor, tente novamente ou entre em contato conosco.", MessageSender.BOT);
-                        }
-                        break;
-                    }
-                    
-                    // Sanitizar orderId para remover duplicações antes de usar
-                    // IMPORTANTE: Apenas sanitizar se for código com letras, não números puros
-                    let sanitizedOrderId: string | undefined = undefined;
-                    if (orderId) {
-                        const orderIdStr = orderId as string;
-                        // Se é número puro, usar diretamente sem sanitização
-                        if (/^\d+$/.test(orderIdStr.trim())) {
-                            sanitizedOrderId = orderIdStr.trim();
-                        } else {
-                            // Se tem letras, aplicar sanitização
-                            sanitizedOrderId = sanitizeOrderCode(orderIdStr);
-                        }
-                    }
-                    // O usuário pode fornecer código do pedido OU email
-                    const searchValue = (sanitizedOrderId as string) || (customerEmail as string) || '';
-                    // Email é OPCIONAL: só usar se fornecido explicitamente ou se buscar por email
-                    // Se buscar por código do pedido sem email, não validar email
-                    const providedEmail = customerEmail as string | undefined;
-                    
-                    // Confirmar email se fornecido e diferente do login
-                    if (providedEmail) {
-                        const emailToUse = providedEmail.toLowerCase().trim();
-                        const userEmail = user.email.toLowerCase().trim();
-                        if (emailToUse !== userEmail) {
-                            addMessage(`Você está logado com ${user.email}, mas forneceu ${providedEmail}. Vou usar o email fornecido para validar o pedido.`, MessageSender.BOT);
-                        } else {
-                            addMessage(`Confirmando: você está logado com ${user.email}. Este é o mesmo email usado na compra do pedido.`, MessageSender.BOT);
-                        }
-                    } else if (sanitizedOrderId && user.email) {
-                        // Se tem código mas não tem email fornecido, confirmar email logado
-                        addMessage(`Você está logado com ${user.email}. Este é o mesmo email usado na compra do pedido ${sanitizedOrderId}?`, MessageSender.BOT);
-                    }
-                    
-                    // Feedback imediato ao usuário com loading visual
-                    setIsSearching(true);
-                    if (sanitizedOrderId) {
-                        addMessage(`Buscando informações do pedido ${sanitizedOrderId}... 🔍`, MessageSender.BOT);
-                    } else {
-                        addMessage('Buscando seus pedidos... 🔍', MessageSender.BOT);
-                    }
-                    
-                    try {
-                        // Se tem orderId, buscar pedido específico; se não, buscar por email
-                        const trackingInfo = await supportService.trackOrder(searchValue, providedEmail || user.email);
-                        setIsSearching(false);
-                    
-                        // Se pedido não encontrado e não há email fornecido, solicitar email
-                        if (trackingInfo.status === 'Não encontrado' && sanitizedOrderId && !providedEmail && !user.email) {
-                            setPendingOrderSearch(sanitizedOrderId);
-                            setEmailRequestModal({
-                                orderId: sanitizedOrderId,
-                                reason: 'Para encontrar seu pedido, precisamos confirmar seu email. Por favor, informe o email usado na compra.'
-                            });
-                            addMessage(`Não encontrei o pedido ${sanitizedOrderId} sem validação de email. Vou solicitar seu email para continuar a busca.`, MessageSender.BOT);
-                            break;
-                        }
-                        
-                        // Se pedido não encontrado mesmo com email, tentar alternativas
-                        if (trackingInfo.status === 'Não encontrado') {
-                            // Tentar buscar por email do usuário logado para ver se há pedidos associados
-                            if (user.email && sanitizedOrderId) {
-                                setIsSearching(true);
-                                try {
-                                    const customerOrders = await supportService.findOrdersByCustomer(
-                                        { email: user.email },
-                                        { limit: 5, companyId, useCache: true }
-                                    );
-                                    setIsSearching(false);
-                                    if (customerOrders && customerOrders.length > 0) {
-                                        // Encontrou pedidos por email - mostrar lista e perguntar
-                                        addMessage(
-                                            `Não encontrei o pedido ${sanitizedOrderId} com esse código exato. ` +
-                                            `No entanto, encontrei ${customerOrders.length} pedido(s) associado(s) ao seu email ${user.email}. ` +
-                                            `Talvez o código esteja incompleto ou diferente. Veja os pedidos encontrados:`,
-                                            MessageSender.BOT
-                                        );
-                                        renderComponentInChat(<OrderList orders={customerOrders} />);
-                                        addMessage(
-                                            `Algum desses pedidos é o que você está procurando? ` +
-                                            `Se sim, me informe o número correto. ` +
-                                            `Se não encontrar seu pedido aqui, pode ser que:\n` +
-                                            `• O código do pedido esteja incompleto (ex: faltam letras no início como "R")\n` +
-                                            `• O email usado na compra seja diferente de ${user.email}\n` +
-                                            `• O código esteja incorreto\n\n` +
-                                            `Você pode me informar o código completo do pedido ou o email usado na compra?`,
-                                            MessageSender.BOT
-                                        );
-                                        orderFound = true; // Encontrou pedidos por email, mesmo que não seja o código exato
-                                        setAttemptsWithoutResolution(prev => Math.max(0, prev - 1)); // Reduzir tentativas já que encontrou algo
-                                    } else {
-                                        // Não encontrou pedidos por email também
-                                        addMessage(
-                                            `Não foi possível encontrar o pedido ${sanitizedOrderId} com esse código. ` +
-                                            `Também não encontrei pedidos associados ao email ${user.email}. ` +
-                                            `Isso pode acontecer se:\n` +
-                                            `• O código do pedido estiver incompleto (ex: faltam letras no início como "R" ou "LP")\n` +
-                                            `• O email usado na compra for diferente de ${user.email}\n` +
-                                            `• O código estiver incorreto\n\n` +
-                                            `Você pode:\n` +
-                                            `• Informar o código completo do pedido (com todas as letras e números)\n` +
-                                            `• Informar o email usado na compra (se for diferente)\n` +
-                                            `• Abrir um chamado de suporte para nossa equipe te ajudar`,
-                                            MessageSender.BOT
-                                        );
-                                        setAttemptsWithoutResolution(prev => prev + 1);
-                                    }
-                                } catch (error) {
-                                    setIsSearching(false);
-                                    console.error('[Chatbot] Erro ao buscar pedidos por email:', error);
-                                    addMessage(
-                                        `Não foi possível encontrar o pedido ${sanitizedOrderId || 'informado'}. ` +
-                                        `Verifique se o código está completo e correto. ` +
-                                        `Se o código estiver incompleto (ex: faltam letras no início), informe o código completo. ` +
-                                        `Caso contrário, entre em contato conosco para mais informações.`,
-                                        MessageSender.BOT
-                                    );
-                                    setAttemptsWithoutResolution(prev => prev + 1);
-                                }
-                            } else {
-                                // Não tem email do usuário logado
-                                addMessage(
-                                    `Não foi possível encontrar o pedido ${sanitizedOrderId || 'informado'}. ` +
-                                    `Verifique se o código está completo e correto. ` +
-                                    `Códigos de pedido geralmente começam com letras (ex: R123456, LP12345). ` +
-                                    `Se o código estiver incompleto, informe o código completo. ` +
-                                    `Caso contrário, entre em contato conosco para mais informações.`,
-                                    MessageSender.BOT
-                                );
-                                setAttemptsWithoutResolution(prev => prev + 1);
-                            }
-                            break;
-                        }
-                        
-                        // Pedido encontrado - resetar tentativas
-                        orderFound = true;
-                        setAttemptsWithoutResolution(0);
-                        
-                        // Adicionar orderNumber aos mencionados
-                        if (trackingInfo.order) {
-                            const orderNum = trackingInfo.order.order_number;
-                            if (orderNum && !mentionedOrderNumbers.includes(orderNum)) {
-                                setMentionedOrderNumbers(prev => [...prev, orderNum]);
-                            }
-                        }
-                        
-                        // Verificar se múltiplos pedidos foram encontrados por email
-                        if (trackingInfo.orders && trackingInfo.orders.length > 1) {
-                            // Múltiplos pedidos encontrados - exibir modal de seleção
-                            setSelectedOrders(trackingInfo.orders);
-                            setShowOrderSelection(true);
-                            addMessage(`Encontrei ${trackingInfo.orders.length} pedidos associados ao seu email. Por favor, selecione qual pedido deseja consultar.`, MessageSender.BOT);
-                        } else if (trackingInfo.orders && trackingInfo.orders.length === 1) {
-                            // Apenas um pedido encontrado - exibir diretamente
-                            const singleOrder = trackingInfo.orders[0];
-                            renderComponentInChat(<OrderList orders={[singleOrder]} />);
-                            addMessage(trackingInfo.details, MessageSender.BOT);
-                        } else if (trackingInfo.order) {
-                            // Pedido único encontrado - renderizar também para melhor visualização
-                            renderComponentInChat(<OrderList orders={[trackingInfo.order]} />);
-                            addMessage(trackingInfo.details, MessageSender.BOT);
-                        } else {
-                            // Adicionar mensagem formatada com todas as informações
-                            addMessage(trackingInfo.details, MessageSender.BOT);
-                        }
-                    } catch (error) {
-                        setIsSearching(false);
-                        console.error('[Chatbot] Erro ao buscar pedido:', error);
-                        addMessage(
-                            `Erro ao buscar informações do pedido. Por favor, tente novamente ou abra um chamado de suporte.`,
-                            MessageSender.BOT
-                        );
-                        setAttemptsWithoutResolution(prev => prev + 1);
-                    }
+                    // Não buscar pedidos - apenas abrir chamado com o número do pedido fornecido
+                    const { orderId } = call.args;
+                    ticketOpened = true;
+                    setAttemptsWithoutResolution(0);
+                    const orderNumber = orderId ? (orderId as string) : undefined;
+                    // Abrir chamado automaticamente com o número do pedido (se fornecido)
+                    renderComponentInChat(
+                        <Dialog open={true} onOpenChange={() => setMessages(prev => prev.filter(m => m.component === null || m.component === undefined))}>
+                            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto z-[100]">
+                                <DialogHeader>
+                                    <DialogTitle>Abrir Chamado de Suporte</DialogTitle>
+                                </DialogHeader>
+                                <SupportTicketFormAdvanced
+                                   initialData={{ 
+                                       name: user.name, 
+                                       email: user.email, 
+                                       phone: user.phone,
+                                       orderNumber: orderNumber
+                                   }}
+                                   onSubmit={(ticketId) => handleFormSubmit('ticket', ticketId)}
+                                   onClose={() => setMessages(prev => prev.filter(m => m.component === null || m.component === undefined))}
+                                />
+                            </DialogContent>
+                        </Dialog>
+                    );
                     break;
                 case 'initiateExchange':
                     renderComponentInChat(
@@ -836,12 +560,12 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
         }
         
         // Salvar conversa após processar função (não bloquear resposta)
-        saveConversation(orderFound || ticketOpened).catch(err => {
+        saveConversation(ticketOpened).catch(err => {
             console.error('[Chatbot] Erro ao salvar conversa (não crítico):', err);
         });
         
         // Aprendizado automático após conversa bem-sucedida (não bloqueante)
-        if (orderFound || ticketOpened) {
+        if (ticketOpened) {
             // Processar aprendizado automático em background
             Promise.all([
                 import('../services/autoLearningService'),
@@ -923,131 +647,6 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
         }
     };
 
-    // Função helper para sanitizar códigos de pedido removendo duplicações
-    const sanitizeOrderCode = (code: string): string => {
-        if (!code || typeof code !== 'string') return code || '';
-        
-        // Remover "#" do início para normalização
-        let cleaned = code.replace(/^#+/, '').trim();
-        
-        // IMPORTANTE: NÃO processar números puros (apenas dígitos)
-        // Números puros não devem ser sanitizados para evitar falsos positivos
-        if (/^\d+$/.test(cleaned)) {
-            return cleaned; // Retornar número puro sem modificação
-        }
-        
-        // Apenas processar códigos que começam com letras (R123, LP123, ABC123, etc.)
-        if (!/^[A-Za-z]/.test(cleaned)) {
-            return cleaned; // Se não começa com letra, retornar sem modificação
-        }
-        
-        // Verificar se há duplicação exata no meio do código (ex: R123R123, ABC123ABC123)
-        // Dividir em possíveis partes e verificar se há repetição
-        const halfLength = Math.floor(cleaned.length / 2);
-        if (halfLength > 0 && cleaned.length % 2 === 0) {
-            const firstHalf = cleaned.substring(0, halfLength);
-            const secondHalf = cleaned.substring(halfLength);
-            if (firstHalf === secondHalf) {
-                return firstHalf;
-            }
-        }
-        
-        // Detectar duplicação consecutiva usando regex (ex: R123R123, ABC123ABC123)
-        // Padrão: captura grupo de caracteres e verifica se é repetido consecutivamente
-        // Aplicar apenas a códigos que começam com letras
-        const duplicatePattern = /^([A-Za-z].+?)\1+$/;
-        const match = cleaned.match(duplicatePattern);
-        
-        if (match && match[0] === cleaned) {
-            // Se o código inteiro é uma duplicação exata, retornar apenas uma vez
-            return match[1];
-        }
-        
-        // Verificar duplicação parcial no final (ex: R123R123 onde pode haver espaço)
-        // Tentar encontrar padrão repetido no final
-        for (let i = Math.floor(cleaned.length / 2); i >= 3; i--) {
-            const suffix = cleaned.substring(cleaned.length - i);
-            const prefix = cleaned.substring(0, i);
-            if (suffix === prefix && cleaned.length >= i * 2) {
-                // Verificar se há repetição completa
-                const repeated = prefix + prefix;
-                if (cleaned === repeated || cleaned.endsWith(repeated)) {
-                    return prefix;
-                }
-            }
-        }
-        
-        return cleaned;
-    };
-
-    // Função helper para sanitizar respostas e remover duplicações de códigos de pedido
-    const sanitizeOrderCodeDuplication = (text: string): string => {
-        if (!text || typeof text !== 'string') return text;
-        
-        // Padrões para códigos de pedido (incluindo "#" opcional)
-        // IMPORTANTE: Apenas processar códigos que começam com letras (R, LP, ABC, etc.)
-        // NÃO processar números puros para evitar falsos positivos
-        const orderCodePattern = /#?\b(R\d+[-\w]*|LP[-_]?\d+|[A-Za-z]+\d+[-\w]*)/gi;
-        const matches = text.match(orderCodePattern);
-        
-        // Padrão para detectar códigos genéricos duplicados (ex: ABC123ABC123, R123R123)
-        // IMPORTANTE: Apenas códigos que começam com letras seguidos de números
-        // NÃO aplicar a números puros
-        const genericCodePattern = /(\b[A-Za-z]+\d+[-\w]*)\1+\b/gi;
-        const genericMatches = text.match(genericCodePattern);
-        
-        let sanitized = text;
-        
-        // Processar códigos padrão (R/LP) e genéricos com letras
-        if (matches && matches.length > 0) {
-            // Encontrar códigos únicos (case-insensitive, removendo "#" para comparação)
-            const uniqueCodes = new Map<string, string>();
-            matches.forEach(match => {
-                // Remover "#" para normalização na comparação
-                const normalized = match.replace(/^#+/, '').trim().toUpperCase();
-                // Validar que o código começa com letra (não é número puro)
-                if (/^[A-Za-z]/.test(normalized) && !uniqueCodes.has(normalized)) {
-                    // Preservar formato original do primeiro encontrado (com ou sem #)
-                    uniqueCodes.set(normalized, match);
-                }
-            });
-            
-            // Detectar e corrigir duplicações consecutivas apenas em códigos válidos
-            uniqueCodes.forEach((originalCode, normalizedCode) => {
-                // Criar padrão que aceita "#" opcional antes do código
-                const codeWithoutHash = originalCode.replace(/^#+/, '');
-                const escapedCode = codeWithoutHash.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                
-                // Padrão para detectar duplicação consecutiva (com ou sem #)
-                // Aplicar apenas se o código começa com letra
-                if (/^[A-Za-z]/.test(codeWithoutHash)) {
-                    const duplicatePattern = new RegExp(`(#?${escapedCode})\\1+`, 'gi');
-                    sanitized = sanitized.replace(duplicatePattern, originalCode);
-                    
-                    // Também verificar variações onde o segundo código pode ter "#" diferente
-                    const mixedPattern = new RegExp(`(${escapedCode})(#?\\1)`, 'gi');
-                    sanitized = sanitized.replace(mixedPattern, originalCode);
-                }
-            });
-        }
-        
-        // Processar códigos genéricos duplicados (ex: ABC123ABC123)
-        // IMPORTANTE: Apenas códigos que começam com letras
-        if (genericMatches && genericMatches.length > 0) {
-            genericMatches.forEach(match => {
-                // Validar que começa com letra antes de processar
-                if (/^[A-Za-z]/.test(match)) {
-                    // Extrair a parte única (primeira metade se for duplicação exata)
-                    const sanitizedCode = sanitizeOrderCode(match);
-                    if (sanitizedCode !== match) {
-                        sanitized = sanitized.replace(match, sanitizedCode);
-                    }
-                }
-            });
-        }
-        
-        return sanitized;
-    };
 
     // Função para detectar e extrair blocos de código de uma mensagem
     const parseCodeBlocks = (text: string): Array<{ type: 'text' | 'code'; content: string; language?: string }> => {
@@ -1092,14 +691,9 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
     };
 
     const addMessage = (text: string, sender: MessageSender) => {
-        // Sanitizar texto antes de adicionar se for mensagem do bot
-        const sanitizedText = sender === MessageSender.BOT 
-            ? sanitizeOrderCodeDuplication(text) 
-            : text;
-            
         const newMessage: Message = {
             id: `msg-${Date.now()}-${++messageIdCounter.current}`,
-            text: sanitizedText,
+            text: text,
             sender,
         };
         setMessages(prev => [...prev, newMessage]);
@@ -1109,9 +703,7 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
         e.preventDefault();
         if (!input.trim() || isLoading) return;
 
-        // Sanitizar mensagem do usuário para remover duplicações de códigos antes de processar
-        const sanitizedUserMessage = sanitizeOrderCodeDuplication(input.trim());
-        const userMessage = sanitizedUserMessage;
+        const userMessage = input.trim();
         addMessage(userMessage, MessageSender.USER);
         
         // Extrair orderNumbers da mensagem do usuário (já sanitizada)
@@ -1627,88 +1219,6 @@ Telefone: ${data.phone || user.phone || 'Não informado'}`;
                 )}
             </AnimatePresence>
       
-      {emailRequestModal && (
-        <EmailRequestModal
-        isOpen={!!emailRequestModal}
-        onClose={() => {
-          setEmailRequestModal(null);
-          setPendingOrderSearch(null);
-        }}
-        onSubmit={async (email) => {
-          if (pendingOrderSearch) {
-            setEmailRequestModal(null);
-            addMessage(`Buscando pedido #${pendingOrderSearch} com o email fornecido...`, MessageSender.BOT);
-            
-            const trackingInfo = await supportService.trackOrder(pendingOrderSearch, email);
-            
-            if (trackingInfo.order) {
-              renderComponentInChat(<OrderList orders={[trackingInfo.order]} />);
-              addMessage(trackingInfo.details, MessageSender.BOT);
-            } else if (trackingInfo.orders && trackingInfo.orders.length > 1) {
-              // Múltiplos pedidos encontrados
-              setSelectedOrders(trackingInfo.orders);
-              setShowOrderSelection(true);
-              addMessage(`Encontrei ${trackingInfo.orders.length} pedidos associados ao seu email. Por favor, selecione qual pedido deseja consultar.`, MessageSender.BOT);
-            } else {
-              addMessage(
-                `Não foi possível encontrar o pedido #${pendingOrderSearch} associado ao email ${email}. ` +
-                `Verifique se o código do pedido e o email estão corretos.`,
-                MessageSender.BOT
-              );
-            }
-            
-            setPendingOrderSearch(null);
-          }
-        }}
-        orderId={emailRequestModal.orderId}
-        reason={emailRequestModal.reason}
-        />
-      )}
-      
-      <OrderSelectionModal
-        isOpen={showOrderSelection}
-        orders={selectedOrders}
-        allowMultiple={true}
-        onSelect={(orderOrOrders) => {
-          setShowOrderSelection(false);
-          // Verificar se é array (múltiplos) ou objeto único
-          const ordersArray = Array.isArray(orderOrOrders) ? orderOrOrders : [orderOrOrders];
-          
-          // Renderizar informações dos pedidos selecionados
-          renderComponentInChat(<OrderList orders={ordersArray} />);
-          
-          if (ordersArray.length === 1) {
-            const order = ordersArray[0];
-            const orderDetails = supportService.formatOrderDetails(order);
-            addMessage(`Informações do pedido selecionado:\n\n${orderDetails}`, MessageSender.BOT);
-            // Adicionar orderNumber aos mencionados
-            if (order.order_number && !mentionedOrderNumbers.includes(order.order_number)) {
-              setMentionedOrderNumbers(prev => [...prev, order.order_number]);
-            }
-          } else {
-            // Múltiplos pedidos selecionados
-            const orderNumbers = ordersArray.map(o => o.order_number).filter(Boolean);
-            addMessage(
-              `Informações dos ${ordersArray.length} pedidos selecionados:\n\n` +
-              ordersArray.map(order => {
-                const details = supportService.formatOrderDetails(order);
-                return `📦 Pedido ${order.order_number}:\n${details}`;
-              }).join('\n\n---\n\n'),
-              MessageSender.BOT
-            );
-            // Adicionar todos os orderNumbers aos mencionados
-            orderNumbers.forEach(orderNumber => {
-              if (orderNumber && !mentionedOrderNumbers.includes(orderNumber)) {
-                setMentionedOrderNumbers(prev => [...prev, orderNumber]);
-              }
-            });
-          }
-        }}
-        onClose={() => {
-          setShowOrderSelection(false);
-          setSelectedOrders([]);
-        }}
-      />
     </>
   );
 };

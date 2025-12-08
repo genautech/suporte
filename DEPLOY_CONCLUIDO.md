@@ -3,8 +3,8 @@
 ## 🎉 Status do Deploy
 
 - **Data:** 30/11/2025  
-- **Cloud Build:** `767e0cdf-8c84-4ceb-bb06-56772a308b90`  
-- **Revisão ativa:** `suporte-lojinha-00054-ktq`  
+- **Cloud Build:** `9ca92978-9138-4975-9163-4dd23d2f9465`  
+- **Revisão ativa:** `suporte-lojinha-00055-jt4`  
 - **Status geral:** ✅ Online e servindo 100% do tráfego
 
 ---
@@ -80,7 +80,7 @@ Checklist funcional realizado:
 ## ✅ Checklist final
 
 - [x] Build da imagem concluído (Cloud Build)  
-- [x] Deploy do `suporte-lojinha` atualizado (rev `00033-tlx`)  
+- [x] Deploy do `suporte-lojinha` atualizado (rev `00055-jt4`)  
 - [x] Proxies revisados (Cubbo/Auth/Postmark)  
 - [x] Scripts e documentação alinhados ao `deploy-auto.sh`  
 - [x] Smoke tests executados e aprovados  

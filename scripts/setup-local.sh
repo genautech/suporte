@@ -110,3 +110,8 @@ Variáveis úteis:
 EOF
 
 
+
+
+
+
+
