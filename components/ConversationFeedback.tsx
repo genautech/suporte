@@ -15,17 +15,17 @@ export const ConversationFeedback: React.FC<ConversationFeedbackProps> = ({
   onSubmitted,
   onSkip,
 }) => {
-  const [rating, setRating] = useState<number | null>(null);
+  const [npsScore, setNpsScore] = useState<number | null>(null);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async () => {
-    if (rating === null) return;
+    if (npsScore === null) return;
 
     setIsSubmitting(true);
     try {
-      await conversationService.addFeedback(conversationId, rating, comment || undefined);
+      await conversationService.addFeedback(conversationId, npsScore, comment || undefined, true); // true = isNps
       setSubmitted(true);
       if (onSubmitted) {
         setTimeout(() => {
@@ -53,26 +53,45 @@ export const ConversationFeedback: React.FC<ConversationFeedbackProps> = ({
     <Card className="p-4 bg-base-100 border-border">
       <h4 className="font-semibold mb-2 text-sm">Como foi seu atendimento?</h4>
       <p className="text-xs text-muted-foreground mb-3">
-        Sua opinião é muito importante para melhorarmos nosso serviço.
+        Em uma escala de 0 a 10, qual a probabilidade de você recomendar nosso serviço a um amigo ou colega?
       </p>
 
-      {/* Estrelas */}
-      <div className="flex gap-1 mb-3 justify-center">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            key={star}
-            type="button"
-            onClick={() => setRating(star)}
-            className={`text-2xl ${
-              rating !== null && star <= rating
-                ? 'text-yellow-400'
-                : 'text-gray-300 hover:text-yellow-300'
-            } transition-colors`}
-            disabled={isSubmitting}
-          >
-            ★
-          </button>
-        ))}
+      {/* Escala NPS 0-10 */}
+      <div className="mb-3">
+        <div className="flex gap-1 justify-between mb-2">
+          <span className="text-xs text-muted-foreground">Não recomendaria</span>
+          <span className="text-xs text-muted-foreground">Recomendaria com certeza</span>
+        </div>
+        <div className="flex gap-1 flex-wrap justify-center">
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
+            <button
+              key={score}
+              type="button"
+              onClick={() => setNpsScore(score)}
+              className={`w-10 h-10 rounded-md text-sm font-semibold transition-colors ${
+                npsScore !== null && score === npsScore
+                  ? score >= 9
+                    ? 'bg-green-500 text-white'
+                    : score >= 7
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-red-500 text-white'
+                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+              }`}
+              disabled={isSubmitting}
+            >
+              {score}
+            </button>
+          ))}
+        </div>
+        {npsScore !== null && (
+          <p className="text-xs text-center mt-2 text-muted-foreground">
+            {npsScore >= 9
+              ? 'Promotor - Obrigado!'
+              : npsScore >= 7
+              ? 'Neutro - Obrigado pelo feedback!'
+              : 'Detrator - Vamos melhorar!'}
+          </p>
+        )}
       </div>
 
       {/* Comentário opcional */}
@@ -100,7 +119,7 @@ export const ConversationFeedback: React.FC<ConversationFeedbackProps> = ({
         <Button
           size="sm"
           onClick={handleSubmit}
-          disabled={rating === null || isSubmitting}
+          disabled={npsScore === null || isSubmitting}
         >
           {isSubmitting ? 'Enviando...' : 'Enviar'}
         </Button>
@@ -108,4 +127,10 @@ export const ConversationFeedback: React.FC<ConversationFeedbackProps> = ({
     </Card>
   );
 };
+
+
+
+
+
+
 

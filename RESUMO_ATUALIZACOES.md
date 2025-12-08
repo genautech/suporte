@@ -1,172 +1,136 @@
-# 📋 Resumo das Atualizações - Busca de Pedidos com Validação
+# 📋 Resumo das Atualizações - Marco v2.3.0
 
-## ✅ Deploy Concluído
+## ✅ Deploy revisado
 
-**Data:** 05/11/2025  
-**Serviço:** `suporte-lojinha`  
-**Revisão:** `suporte-lojinha-00005-dzg`  
-**URL:** https://suporte-lojinha-409489811769.southamerica-east1.run.app  
-**Status:** ✅ Deployado e funcionando
-
----
-
-## 🎯 Mudanças Implementadas
-
-### 1. Busca Flexível de Pedidos
-
-**Antes:**
-- Cliente só podia buscar por código do pedido
-- Não havia validação de segurança
-
-**Agora:**
-- ✅ Cliente pode buscar por **código do pedido** OU **email**
-- ✅ Validação automática de segurança
-- ✅ Sistema garante que pedidos só sejam mostrados ao dono
-
-### 2. Validação de Segurança
-
-**Como funciona:**
-1. **Se cliente informar código do pedido:**
-   - Sistema busca o pedido na API Cubbo
-   - Valida que o email do pedido corresponde ao email do cliente logado
-   - Se não corresponder, retorna erro de autorização
-
-2. **Se cliente informar email:**
-   - Sistema busca todos os pedidos daquele email
-   - Mostra lista completa com status e rastreio
-
-3. **Validação dupla:**
-   - Se pedido não tiver email cadastrado, busca pedidos do cliente e valida por ID/número
-   - Garante que nenhum pedido seja acessado indevidamente
-
-### 3. Atualização do Chatbot AI
-
-**Mudanças no Gemini:**
-- ✅ Função `trackOrder` atualizada para aceitar código OU email
-- ✅ Instruções de sistema atualizadas com regras de segurança
-- ✅ Chatbot agora entende ambas as formas de busca
-
-**Exemplos de uso:**
-- "Onde está meu pedido LP-12345?" → Busca por código + valida email
-- "Buscar pedidos do email cliente@exemplo.com" → Busca todos os pedidos
-- "Meus pedidos" → Usa email do cliente logado
-
-### 4. Interface Administrativa
-
-**AdminOrders.tsx:**
-- ✅ Admin pode buscar sem validação de email (passa apenas código)
-- ✅ Mantém funcionalidade completa para administradores
-
-### 5. Suporte a store_id
-
-**Correções:**
-- ✅ Todas as requisições agora incluem `store_id` obrigatório
-- ✅ Campo `store_id` adicionado ao formulário de configuração
-- ✅ Validação se `store_id` está configurado antes de fazer requisições
+- **Data da revisão:** 30/11/2025  
+- **Serviço:** `suporte-lojinha`  
+- **Revisão Cloud Run:** `suporte-lojinha-00055-jt4` (build `9ca92978-9138-4975-9163-4dd23d2f9465`)  
+- **URL produção:** https://suporte-lojinha-409489811769.southamerica-east1.run.app  
+- **Status:** ✅ Live e servindo 100% do tráfego
 
 ---
 
-## 📝 Arquivos Modificados
+## 🎯 Destaques do release
 
-### Código
-- ✅ `services/supportService.ts` - Função `trackOrder` refatorada
-- ✅ `services/geminiService.ts` - Função e instruções atualizadas
-- ✅ `components/Chatbot.tsx` - Lógica de busca atualizada
-- ✅ `components/AdminOrders.tsx` - Mantido para admin
-- ✅ `types.ts` - Adicionado `customer_email` e `customer_phone` ao `CubboOrder`
-- ✅ `vite-env.d.ts` - Criado para resolver tipos TypeScript
-
-### Documentação
-- ✅ `docs/specs/04-apis.md` - Atualizado com validação e `store_id`
-- ✅ `docs/specs/09-features.md` - Atualizado com novas funcionalidades
-- ✅ `CORRECAO_STORE_ID.md` - Documentação sobre `store_id`
+1. **Central de notificações em tempo real** para admins, gestores e clientes.  
+2. **Banners de comunicação dirigida** com rich text e segmentação por empresa.  
+3. **Biblioteca de respostas padrão** integrada ao aprendizado do Gemini.  
+4. **Fluxo completo de escalonamento de gestores**, com alertas e acompanhamento.  
+5. **Experiência do gestor aprimorada** (ordens celebradas, cache, preferências).  
+6. **Documentação e scripts** alinhados ao `deploy-auto.sh` apontando para o novo endpoint oficial.
 
 ---
 
-## 🔒 Segurança
+## 🔔 Central de Notificações
 
-### Validações Implementadas
-
-1. **Validação por Email:**
-   - Compara email do pedido com email do cliente logado
-   - Case-insensitive e trim de espaços
-
-2. **Validação por Lista:**
-   - Se pedido não tiver email, busca pedidos do cliente
-   - Verifica se pedido está na lista antes de mostrar
-
-3. **Mensagens de Erro:**
-   - Erro específico quando pedido não pertence ao cliente
-   - Não expõe informações sensíveis
+- `NotificationCenterProvider` injeta o escopo correto (admin/manager/user) direto no `App`.  
+- `NotificationBell` exibe contador em tempo real, mantém estado de mute/localStorage e permite marcar tudo como lido.  
+- `notificationService.ts` agrega tickets e conversas usando listeners Firestore, com fallback para usuários finais por `userId`.  
+- Toasts com áudio leve alertam novos chamados, conversas e atualizações administrativas.
 
 ---
 
-## 🧪 Como Testar
+## 📣 Avisos e Banners Ricos
 
-### Teste 1: Busca por Código
-1. Cliente faz login
-2. Pergunta: "Onde está meu pedido LP-12345?"
-3. Sistema busca e valida contra email do cliente
-4. Se pertencer: mostra informações
-5. Se não pertencer: mostra erro de autorização
-
-### Teste 2: Busca por Email
-1. Cliente faz login
-2. Pergunta: "Buscar pedidos do email cliente@exemplo.com"
-3. Sistema busca todos os pedidos daquele email
-4. Mostra lista completa com status e rastreio
-
-### Teste 3: Admin
-1. Admin faz login
-2. Vai em "Buscar Pedidos"
-3. Digita código do pedido
-4. Busca funciona sem validação de email (admin tem acesso total)
+- `AdminSupportNotices` entrega CRUD com editor WYSIWYG, filtros por empresa e flags de exibição (`showOnHome`, `showOnSupport`).  
+- `CompanyNoticePanel` permite que cada empresa registre avisos exclusivos direto no cadastro.  
+- `SupportNoticeBanner` mostra cards responsivos antes do conteúdo principal (Home + SupportArea) e pode ser recolhido pelo usuário.  
+- `supportNoticeService` centraliza persistência, filtros por local e listeners de ativos/inativos.
 
 ---
 
-## 📊 Fluxo de Busca
+## 🧠 Biblioteca de Respostas Padrão
 
-```
-Cliente informa código OU email
-         ↓
-Sistema identifica tipo de busca
-         ↓
-┌────────────────┐  ┌─────────────────┐
-│  Se for código │  │  Se for email   │
-└────────────────┘  └─────────────────┘
-         ↓                      ↓
-Busca pedido específico    Busca todos pedidos
-         ↓                      ↓
-Valida email do cliente    Mostra lista completa
-         ↓
-Se válido: mostra pedido
-Se inválido: erro de autorização
-```
+- `AdminDefaultResponses` organiza scripts por empresa com busca, categorias, keywords e contador de uso.  
+- Integra opcionalmente com `knowledgeBaseService` e `autoLearningService` para promover respostas aprovadas.  
+- `defaultResponseService` normaliza perguntas, calcula similaridade e expõe `findMatchingResponse` para alimentar o chatbot.
 
 ---
 
-## ✅ Checklist de Verificação
+## 🚨 Escalonamentos e Alertas do Gestor
 
-- [x] Código atualizado com busca flexível
-- [x] Validação de segurança implementada
-- [x] Chatbot AI atualizado
-- [x] Interface admin mantida
-- [x] Suporte a `store_id` implementado
-- [x] Specs atualizadas
-- [x] Deploy realizado com sucesso
-- [x] Documentação completa
+- `managerEscalationService` cria tickets de alta prioridade, relaciona pedido e sincroniza status com `managerNotificationService`.  
+- `ManagerDashboard` ganhou abas específicas para ver/abrir escalations, com filtros, busca e modal dedicado.  
+- `managerNotificationService` e `NotificationBell` entregam feed de pedidos novos, escalations e atualizações do suporte.
 
 ---
 
-## 🎉 Resultado Final
+## 👤 Experiência completa do Gestor
 
-✅ **Sistema agora permite busca por código OU email**  
-✅ **Validação de segurança garante privacidade**  
-✅ **Chatbot AI atualizado e funcionando**  
-✅ **Deploy concluído e em produção**  
-✅ **Documentação completa e atualizada**
+- `managerProfileService` guarda preferências de notificação (canais, tópicos, timezone) e mantém dados em sincronia com `companyService`.  
+- `OrderCelebration` celebra os pedidos mais recentes com animações suaves e indicadores de valor.  
+- `orderCacheService` guarda até 50 pedidos recentes por empresa em `companyOrdersCache`, reduzindo a dependência imediata da API Cubbo.
 
-O sistema está pronto para uso em produção!
+---
+
+## ⚙️ Infra & Deploy
+
+- `deploy-auto.sh` validado contra o endpoint oficial, coleta logs e aborta quando faltar `cloudbuild.yaml`/`Dockerfile`.  
+- `cloudbuild.yaml` continua responsável por injetar `VITE_GEMINI_API_KEY`; documentação reforça uso obrigatório.  
+- `DEPLOY.md`, `DEPLOY_CHECKLIST.md`, `README`, `README_PROXIMOS_PASSOS.md` e `DEPLOY_CONCLUIDO.md` foram atualizados com o fluxo automático.  
+- Novas coleções Firestore documentadas: `supportNotices`, `managerNotifications`, `managerProfiles`, `managerEscalations`, `defaultResponses`, `companyOrdersCache`.
+- `findOrdersByCustomer` passou a executar chamadas independentes para `customer_email`, `shipping_email` e `customer_phone`, deduplicando os resultados antes de exibir no painel do gestor — elimina a janela em branco quando a Cubbo retorna somente um dos campos.
+
+---
+
+## 🧪 Validação sugerida
+
+1. **Admin**  
+   - Entrar no dashboard → Ver badge de notificações e testes de mute/leitura.  
+   - Criar banner no `AdminSupportNotices` e confirmar exibição imediata no SupportArea/Home.  
+   - Criar resposta padrão com `includeInLearning` marcado e verificar entrada correspondente na base de conhecimento.
+
+2. **Gestor**  
+   - Login via `/manager` → Checar OrderCelebration e feed de notificações.  
+   - Abrir um novo escalation a partir de um pedido e acompanhar status/alertas.  
+   - Ajustar preferências de notificação e confirmar persistência.
+
+3. **Cliente final**  
+   - Logar, conferir `SupportNoticeBanner`, abrir notificações e validar sons/toasts.  
+   - Criar ticket/abrir chat para garantir que as notificações aparecem no Admin.
+
+4. **Deploy**  
+   - Executar `./deploy-auto.sh` (ou `./deploy.sh`).  
+   - Confirmar serviço ativo: `gcloud run services describe suporte-lojinha --region southamerica-east1`.  
+   - Validar URL final `https://suporte-lojinha-409489811769.southamerica-east1.run.app`.
+
+---
+
+## 📂 Principais arquivos alterados (código)
+
+- `App.tsx`, `DashboardHeader.tsx`, `NotificationCenterProvider.tsx`, `NotificationBell.tsx`  
+- `SupportNoticeBanner.tsx`, `AdminSupportNotices.tsx`, `CompanyNoticePanel.tsx`  
+- `AdminDefaultResponses.tsx`, `OrderCelebration.tsx`, `ManagerDashboard.tsx`, `SupportArea.tsx`  
+- `services/notificationService.ts`, `managerNotificationService.ts`, `managerEscalationService.ts`, `managerProfileService.ts`, `defaultResponseService.ts`, `supportNoticeService.ts`, `orderCacheService.ts`
+
+---
+
+## 📚 Documentação atualizada
+
+- `README.md`, `README_PROXIMOS_PASSOS.md`, `DEPLOY.md`, `DEPLOY_CHECKLIST.md`, `DEPLOY_CONCLUIDO.md`, `EXECUTAR_DEPLOY.md`, `GUIA_PASSO_A_PASSO_DEPLOY.md`  
+- `docs/specs/05-services.md`, `docs/specs/09-features.md`, `RESUMO_DEPLOY.md`, `RESUMO_FINAL.md`
+
+---
+
+## ✅ Checklist rápido
+
+- [x] Central de notificações disponível para todos os perfis  
+- [x] Banners e respostas padrão gerenciados via AdminDashboard  
+- [x] Pipeline de escalonamento/alertas de gestores funcionando  
+- [x] ManagerDashboard com cache, celebrações e preferências  
+- [x] Scripts/documentação ajustados para `deploy-auto.sh` + Cloud Run  
+- [x] Ambiente em produção serve revisão `suporte-lojinha-00033-tlx`
+
+---
+
+Sistema liberado como marco **v2.3.0** e pronto para o ciclo de monitoramento pós-release. 🎉
+
+
+
+
+
+
+
 
 
 

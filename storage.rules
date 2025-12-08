@@ -1,0 +1,38 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuthenticated() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function normalizedEmail(email) {
+      return email == null ? null : email.lower();
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() &&
+        firestore.exists(/databases/(default)/documents/userRoles/$(request.auth.token.email.lower())) &&
+        firestore.get(/databases/(default)/documents/userRoles/$(request.auth.token.email.lower())).data.role == role;
+    }
+
+    function isSupportAgent() {
+      return (isAuthenticated() && normalizedEmail(request.auth.token.email) == 'admin@yoobe.co') ||
+        hasRole('admin') || hasRole('manager');
+    }
+
+    // Regras para FAQ
+    match /faq/{allPaths=**} {
+      // Apenas usuários autenticados podem ler
+      allow read: if request.auth != null;
+      // Apenas admins podem fazer upload
+      allow write: if isSupportAgent();
+    }
+    
+    // Default: negar acesso
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+

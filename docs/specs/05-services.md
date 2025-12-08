@@ -376,6 +376,129 @@ interface ConversationMessage {
 }
 ```
 
+### 7. Default Response Service
+
+**Arquivo:** `services/defaultResponseService.ts`  
+**Coleção:** `defaultResponses`
+
+#### Funcionalidades
+- `getDefaultResponses(companyId, activeOnly?)` – retorna respostas de uma empresa ordenadas por `usageCount`.
+- `createDefaultResponse(data)` / `updateDefaultResponse(id, data)` / `deleteDefaultResponse(id)` – CRUD completo.
+- `incrementUsage(id)` – incrementa contador de uso e `updatedAt`.
+- `findMatchingResponse(question, companyId, threshold?)` – aplica normalização, similaridade por palavras e bônus por uso para sugerir a melhor resposta.
+
+#### Notas
+- Mantém `keywords`, `category`, flags `includeInLearning`/`includeInAutoLearning`.
+- Utilizado pelo `AdminDefaultResponses` e pelo chatbot (para respostas rápidas antes do Gemini).
+
+### 8. Support Notice Service
+
+**Arquivo:** `services/supportNoticeService.ts`  
+**Coleção:** `supportNotices`
+
+#### Funcionalidades
+- `listen(filters, handler)` / `listenActive(filters, handler)` – ouvem avisos ativos/inativos filtrando por empresa/local (`home`, `support` ou `all`).
+- `create(data)` / `update(id, data)` / `toggleActive(id, active)` / `remove(id)` – CRUD com timestamps automáticos.
+- `getAll()` / `getById(id)` – consultas diretas.
+
+#### Estrutura
+```ts
+interface SupportNotice {
+  id?: string;
+  title: string;
+  content: string; // HTML rico (sanitizado no render)
+  active: boolean;
+  showOnHome: boolean;
+  showOnSupport: boolean;
+  targetCompanyIds: string[];
+  createdAt: number;
+  updatedAt: number;
+  createdBy?: string;
+  updatedBy?: string;
+}
+```
+
+### 9. Notification Service
+
+**Arquivo:** `services/notificationService.ts`
+
+#### Funcionalidades
+- `listenToTicketNotifications({ scope, limit }, handler)` – tickets recentes filtrados por `email` (usuário) ou `companyId` (admin).
+- `listenToConversationNotifications({ scope, limit }, handler)` – conversas recentes; usuários finais filtram por `userId`.
+
+#### Escopos suportados
+```ts
+type NotificationScope =
+  | { role: 'admin' }
+  | { role: 'manager'; companyId: string }
+  | { role: 'user'; email: string };
+```
+
+Ambos os listeners retornam objetos `NotificationItem` com `id`, `title`, `summary`, `status`, `createdAt` e `meta` (priority, ticketId, orderNumber, etc.).
+
+### 10. Manager Notification Service
+
+**Arquivo:** `services/managerNotificationService.ts`  
+**Coleção:** `managerNotifications`
+
+#### Funcionalidades
+- `publish(payload)` – grava notificações para gestores (novo pedido, atualização de escalonamento, etc.).
+- `listen(companyId, handler)` – retorna últimas notificações de uma empresa em tempo real.
+- `fetch({ companyId, cursor?, pageSize? })` – paginação manual.
+- `markAsRead(notificationId, managerEmail)` – registra leitura (array `readBy`).
+
+### 11. Manager Escalation Service
+
+**Arquivo:** `services/managerEscalationService.ts`  
+**Coleção:** `managerEscalations`
+
+#### Funcionalidades
+- `createEscalation(payload)` – cria ticket de prioridade alta, registra escalation e publica notificação para o gestor.
+- `getEscalation(id)` / `listEscalations({ companyId, status?, search?, cursor? })`.
+- `updateEscalationStatus(id, status, adminSummary?)` – sincroniza estado com `managerNotificationService` e atualiza o ticket relacionado.
+
+### 12. Manager Profile Service
+
+**Arquivo:** `services/managerProfileService.ts`  
+**Coleção:** `managerProfiles`
+
+#### Funcionalidades
+- `getProfile(companyId)` / `listenToProfile(companyId, handler)` – recupera/observa perfil do gestor.
+- `upsertProfile(companyId, payload)` – atualiza nome, email, timezone e preferências. Sincroniza com `companyService` e garante permissões (`grantManagerAccess` / `revokeManagerAccess`).
+- `updateNotificationPreferences(companyId, prefs)` – substitui preferências rapidamente.
+- `markCelebrationSeen(companyId)` – registra último acesso ao feed de celebrações.
+
+#### Estrutura (resumo)
+```ts
+interface ManagerProfile {
+  id?: string;
+  companyId: string;
+  name: string;
+  email: string;
+  timezone?: string;
+  notificationPreferences: {
+    newOrders: boolean;
+    escalations: boolean;
+    celebrationFeed: boolean;
+    channels: Array<'in_app' | 'email'>;
+  };
+  lastCelebrationSeenAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
+### 13. Order Cache Service
+
+**Arquivo:** `services/orderCacheService.ts`  
+**Coleção:** `companyOrdersCache`
+
+#### Funcionalidades
+- `getCompanyCache(companyId)` – retorna até 50 pedidos em cache + `expiresAt`.
+- `setCompanyCache(companyId, orders, ttlMs?)` – persiste snapshot sanitizado das orders (TTL padrão 5 minutos).
+
+Usado pelo `ManagerDashboard` para reduzir chamadas diretas à API Cubbo e permitir UI de “Novas orders celebradas”.
+
 ## ☁️ Serviços Cloud Run
 
 ### 1. Cubbo Auth Proxy

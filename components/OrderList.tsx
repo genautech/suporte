@@ -80,19 +80,36 @@ export const OrderList: React.FC<OrderListProps> = ({ orders, onOrderClick }) =>
                 )}
               </div>
               
-              {/* Resumo de produtos */}
+              {/* Resumo de produtos com SKUs */}
               {order.items && order.items.length > 0 ? (
                 <div>
                   <p className="text-muted-foreground text-xs mb-1">Produtos</p>
                   <p className="text-sm">
                     {order.items.length} {order.items.length === 1 ? 'item' : 'itens'}
-                    {order.items_summary && order.items_summary.length > 0 && (
-                      <span className="text-muted-foreground ml-2">
-                        • {order.items_summary.slice(0, 2).join(', ')}
-                        {order.items_summary.length > 2 && '...'}
-                      </span>
-                    )}
+                    {order.items.map((item, idx) => {
+                      const name = item.name || item.sku || 'Produto';
+                      const sku = item.sku ? ` (SKU: ${item.sku})` : '';
+                      return idx < 2 ? (
+                        <span key={idx} className="text-muted-foreground ml-2">
+                          • {name}{sku}
+                        </span>
+                      ) : null;
+                    })}
+                    {order.items.length > 2 && '...'}
                   </p>
+                  {/* Lista de SKUs */}
+                  {order.items.some(item => item.sku) && (
+                    <div className="mt-1">
+                      <p className="text-muted-foreground text-xs mb-0.5">SKUs:</p>
+                      <p className="text-xs font-mono text-muted-foreground">
+                        {order.items
+                          .filter(item => item.sku)
+                          .map(item => item.sku)
+                          .filter((sku, index, self) => self.indexOf(sku) === index)
+                          .join(', ')}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : order.items_summary && order.items_summary.length > 0 && (
                 <div>

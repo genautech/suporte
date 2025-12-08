@@ -1,0 +1,38 @@
+mutation CreateUser @auth(level: USER, insecureReason: "This operation is safe to expose to all logged in users.") {
+  user_insert(data: {
+    displayName: "New User",
+    email: "newuser@example.com",
+    userType: "standard",
+    createdAt_expr: "request.time",
+    id_expr: "uuidV4()"
+  })
+}
+
+query ListFAQs @auth(level: PUBLIC, insecureReason: "This operation is safe to expose to the public") {
+  fAQS {
+    id
+    question
+    answer
+    category
+    createdAt
+  }
+}
+
+mutation CreateMessage($conversationId: UUID!, $text: String!) @auth(level: USER, insecureReason: "This operation is safe to expose to all logged in users.") {
+  message_insert(data: {
+    conversationId: $conversationId,
+    senderId_expr: "auth.uid",
+    text: $text,
+    senderType: "user",
+    createdAt_expr: "request.time",
+    rating: 5
+  })
+}
+
+query GetConversationsForUser @auth(level: USER) {
+  conversations(where: {userId: {eq_expr: "auth.uid"}}) {
+    id
+    createdAt
+    status
+  }
+}

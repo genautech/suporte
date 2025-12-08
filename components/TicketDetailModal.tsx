@@ -80,13 +80,14 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticket, is
                             <p><em>${reply.replace(/\n/g, '<br>')}</em></p>
                         </div>
                         <p>Você pode ver o histórico completo em nosso portal de suporte.</p>
-                        <p>Atenciosamente,<br>Equipe Lojinha Prio by Yoobe</p>
+                        <p>Atenciosamente,<br>Equipe Yoobe</p>
                     </div>`;
 
                 await supportService.sendTicketReplyEmail({
                     to: ticket.email,
                     subject: `Re: Seu chamado de suporte #${ticket.id.substring(0,6)}`,
-                    htmlBody: emailHtmlBody
+                    htmlBody: emailHtmlBody,
+                    bcc: 'atendimento@yoobe.co'
                 });
 
                 // 2. Add reply to ticket history in Firestore

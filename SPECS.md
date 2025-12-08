@@ -91,3 +91,10 @@ docs/specs/              # 📚 Todas as especificações técnicas
 
 
 
+
+
+
+
+
+
+

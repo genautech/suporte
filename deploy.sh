@@ -141,7 +141,8 @@ else
   echo -e "${YELLOW}⏭️  Pulando atualização do Git${NC}"
 fi
 
-# 6. Mostrar URL do serviço
+# 6. Verificar URL do serviço
+EXPECTED_URL="https://suporte-lojinha-409489811769.southamerica-east1.run.app"
 SERVICE_URL=$(gcloud run services describe ${SERVICE_NAME} \
   --region ${REGION} \
   --project ${PROJECT_ID} \
@@ -149,6 +150,25 @@ SERVICE_URL=$(gcloud run services describe ${SERVICE_NAME} \
 
 if [ ! -z "$SERVICE_URL" ]; then
   echo -e "${GREEN}🌐 Serviço disponível em: ${SERVICE_URL}${NC}"
+  
+  # Verificar se URL corresponde à esperada
+  if [ "$SERVICE_URL" != "$EXPECTED_URL" ]; then
+    echo -e "${YELLOW}⚠️  URL diferente da esperada:${NC}"
+    echo -e "${YELLOW}   Esperado: ${EXPECTED_URL}${NC}"
+    echo -e "${YELLOW}   Obtido: ${SERVICE_URL}${NC}"
+  fi
+  
+  # Testar resposta do serviço
+  echo -e "${GREEN}🔍 Testando resposta do serviço...${NC}"
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${SERVICE_URL}" || echo "000")
+  if [ "$HTTP_CODE" = "200" ]; then
+    echo -e "${GREEN}✅ Serviço respondendo corretamente (HTTP 200)${NC}"
+  else
+    echo -e "${YELLOW}⚠️  Serviço retornou HTTP ${HTTP_CODE}${NC}"
+    echo -e "${YELLOW}   Teste manualmente: curl ${SERVICE_URL}${NC}"
+  fi
+else
+  echo -e "${YELLOW}⚠️  Não foi possível obter URL do serviço${NC}"
 fi
 
 echo -e "${GREEN}🎉 Deploy completo!${NC}"

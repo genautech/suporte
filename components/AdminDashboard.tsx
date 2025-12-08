@@ -1,6 +1,6 @@
 // Fix: Implement the AdminDashboard component.
 import React, { useState, useEffect, useCallback } from 'react';
-import { Ticket } from '../types';
+import { Ticket, NotificationItem } from '../types';
 import { supportService } from '../services/supportService';
 import { TicketForm } from './TicketForm';
 import { TicketDetailModal } from './TicketDetailModal';
@@ -8,20 +8,50 @@ import { AdminTraining } from './AdminTraining';
 import { AdminOrders } from './AdminOrders';
 import { AdminFAQ } from './AdminFAQ';
 import { AdminKnowledgeBase } from './AdminKnowledgeBase';
+import { AdminCompanies } from './AdminCompanies';
+import { AdminConversations } from './AdminConversations';
+import { AdminLearningMetrics } from './AdminLearningMetrics';
+import { AdminDefaultResponses } from './AdminDefaultResponses';
+import { AdminSupportNotices } from './AdminSupportNotices';
+import { companyService } from '../services/companyService';
+import { conversationService } from '../services/conversationService';
+import { Company } from '../types';
 import { BrainIcon, LogoutIcon, MessageIcon } from './Icons'; // MessageIcon added
 import { SystemStatus } from './SystemStatus';
 import { Chatbot } from './Chatbot'; // New import for testing
 import { Button } from './ui/button';
-import { Card, CardContent } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Badge } from './ui/badge';
+import { Input } from './ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 import { motion } from 'framer-motion';
+import { DashboardHeader } from './DashboardHeader';
 
-type AdminView = 'tickets' | 'training' | 'status' | 'chatbot' | 'orders' | 'faq' | 'knowledge' | 'arquivados';
+type AdminView =
+  | 'tickets'
+  | 'training'
+  | 'status'
+  | 'chatbot'
+  | 'orders'
+  | 'faq'
+  | 'knowledge'
+  | 'arquivados'
+  | 'companies'
+  | 'conversations'
+  | 'learning'
+  | 'defaultResponses'
+  | 'supportNotices';
 
 interface AdminDashboardProps {
     onLogout: () => void;
-    onSwitchToClient?: () => void;
+    onSwitchToClient?: (companyId?: string) => void;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToClient }) => {
@@ -32,6 +62,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [showArchived, setShowArchived] = useState(false);
+    const [companies, setCompanies] = useState<Company[]>([]);
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string>('general');
+    const [npsStats, setNpsStats] = useState<{
+        average: number;
+        promoters: number;
+        passives: number;
+        detractors: number;
+        total: number;
+        promoterPercentage: number;
+        detractorPercentage: number;
+        nps: number;
+    } | null>(null);
+    const [finalizedCount, setFinalizedCount] = useState<number>(0);
+    const [archivedTicketCount, setArchivedTicketCount] = useState<number>(0);
+    const [archivedConversationCount, setArchivedConversationCount] = useState<number>(0);
+    const [isLoadingNps, setIsLoadingNps] = useState(false);
+    const [subjectFilter, setSubjectFilter] = useState<string>('all');
+    const [searchQuery, setSearchQuery] = useState<string>('');
+    const [pendingConversationFocus, setPendingConversationFocus] = useState<string | null>(null);
     
     const loadTickets = useCallback(async () => {
         setIsLoading(true);
@@ -40,11 +89,59 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
         setIsLoading(false);
     }, [view, showArchived]);
 
+    const refreshArchiveCounts = useCallback(async () => {
+        try {
+            const [ticketCount, conversationCount] = await Promise.all([
+                supportService.getArchivedTicketCount(),
+                conversationService.getArchivedConversationCount(),
+            ]);
+            setArchivedTicketCount(ticketCount);
+            setArchivedConversationCount(conversationCount);
+        } catch (error) {
+            console.error('Erro ao carregar contagens de itens arquivados:', error);
+        }
+    }, []);
+
     useEffect(() => {
         if (view === 'tickets' || view === 'arquivados') {
             loadTickets();
         }
     }, [view, loadTickets]);
+
+    useEffect(() => {
+        refreshArchiveCounts();
+    }, [refreshArchiveCounts]);
+
+    useEffect(() => {
+        // Carregar empresas para o select de visualização como cliente
+        const loadCompanies = async () => {
+            try {
+                const allCompanies = await companyService.getAllCompanies();
+                setCompanies(allCompanies);
+            } catch (error) {
+                console.error('Error loading companies:', error);
+            }
+        };
+        loadCompanies();
+    }, []);
+    
+    useEffect(() => {
+        // Carregar estatísticas NPS quando view for 'tickets' ou inicializar
+        const loadNpsStats = async () => {
+            setIsLoadingNps(true);
+            try {
+                const stats = await conversationService.getNpsStats();
+                const count = await conversationService.getFinalizedInteractionsCount();
+                setNpsStats(stats);
+                setFinalizedCount(count);
+            } catch (error) {
+                console.error('Error loading NPS stats:', error);
+            } finally {
+                setIsLoadingNps(false);
+            }
+        };
+        loadNpsStats();
+    }, [view]);
     
     const handleEditTicket = (ticket: Ticket) => {
         setSelectedTicket(ticket);
@@ -81,6 +178,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 await supportService.archiveTicket(ticket.id);
             }
             loadTickets();
+            refreshArchiveCounts();
         } catch (error) {
             console.error('Erro ao arquivar/reativar ticket:', error);
         }
@@ -106,22 +204,163 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
         }
     };
 
+    const handleNotificationSelect = useCallback(
+        async (notification: NotificationItem) => {
+            if (notification.type === 'ticket') {
+                setView('tickets');
+                const existing = tickets.find((ticket) => ticket.id === notification.entityId);
+                if (existing) {
+                    setSelectedTicket(existing);
+                    setIsDetailModalOpen(true);
+                    return;
+                }
+                try {
+                    const fetched = await supportService.getTicketById(notification.entityId);
+                    if (fetched) {
+                        setSelectedTicket(fetched);
+                        setIsDetailModalOpen(true);
+                    } else {
+                        console.warn('[AdminDashboard] Ticket não encontrado para notificação.');
+                    }
+                } catch (error) {
+                    console.error('[AdminDashboard] Erro ao carregar ticket da notificação:', error);
+                }
+            } else if (notification.type === 'conversation') {
+                setView('conversations');
+                setPendingConversationFocus(notification.entityId);
+            }
+        },
+        [tickets]
+    );
+
+    useEffect(() => {
+        if (!pendingConversationFocus || view !== 'conversations') return;
+        const timeout = setTimeout(() => setPendingConversationFocus(null), 1500);
+        return () => clearTimeout(timeout);
+    }, [pendingConversationFocus, view]);
+
     const renderMainContent = () => {
         switch(view) {
             case 'tickets':
-                // Filtrar tickets baseado no toggle
-                const displayedTickets = showArchived 
+                // Filtrar tickets baseado no toggle e assunto
+                const displayedTickets = (showArchived 
                     ? tickets 
-                    : tickets.filter(t => t.status !== 'arquivado');
+                    : tickets.filter(t => t.status !== 'arquivado')
+                ).filter(t => {
+                    // Filtro por assunto
+                    if (subjectFilter !== 'all' && subjectFilter !== 'pontos' && t.subject !== subjectFilter) {
+                        return false;
+                    }
+                    if (subjectFilter === 'pontos' && t.subject !== 'pontos') {
+                        return false;
+                    }
+                    
+                    // Busca por texto (email, nome, assunto, descrição, número do pedido)
+                    if (searchQuery.trim()) {
+                        const query = searchQuery.toLowerCase().trim();
+                        const searchableText = [
+                            t.email || '',
+                            t.name || '',
+                            t.subject || '',
+                            t.description || '',
+                            t.orderNumber || '',
+                            t.id || ''
+                        ].join(' ').toLowerCase();
+                        
+                        return searchableText.includes(query);
+                    }
+                    
+                    return true;
+                });
                 
                 return (
                      <div>
+                        {/* Cards de Métricas NPS */}
+                        {npsStats && (
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">NPS Médio</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold">
+                                            {npsStats.nps > 0 ? '+' : ''}{npsStats.nps.toFixed(1)}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Média: {npsStats.average.toFixed(1)}/10
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                                
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Atendimentos Finalizados</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold">{finalizedCount}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Total com feedback
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                                
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Promotores</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold text-green-600">{npsStats.promoters}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {npsStats.promoterPercentage.toFixed(1)}% (9-10)
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                                
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Detratores</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-bold text-red-600">{npsStats.detractors}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {npsStats.detractorPercentage.toFixed(1)}% (0-6)
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        )}
+                        
                         <div className="flex justify-between items-center mb-6">
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900 mb-1">Chamados de Suporte</h1>
                                 <p className="text-sm text-gray-600">Gerencie todos os chamados de suporte dos clientes</p>
                             </div>
                             <div className="flex gap-3">
+                                <Input
+                                    type="text"
+                                    placeholder="Buscar por email, nome, assunto, pedido..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-64"
+                                />
+                                <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+                                    <SelectTrigger className="w-[180px]">
+                                        <SelectValue placeholder="Filtrar por assunto" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Todos os assuntos</SelectItem>
+                                        <SelectItem value="pontos">Problema com Pontos</SelectItem>
+                                        <SelectItem value="cancelamento">Cancelamento</SelectItem>
+                                        <SelectItem value="reembolso">Reembolso</SelectItem>
+                                        <SelectItem value="troca">Troca</SelectItem>
+                                        <SelectItem value="produto_defeituoso">Produto com Defeito</SelectItem>
+                                        <SelectItem value="produto_nao_recebido">Produto Não Recebido</SelectItem>
+                                        <SelectItem value="produto_errado">Produto Errado</SelectItem>
+                                        <SelectItem value="atraso_entrega">Atraso na Entrega</SelectItem>
+                                        <SelectItem value="duvida_pagamento">Dúvida sobre Pagamento</SelectItem>
+                                        <SelectItem value="outro">Outro</SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input 
                                         type="checkbox" 
@@ -327,6 +566,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 return <AdminFAQ />;
             case 'knowledge':
                 return <AdminKnowledgeBase />;
+            case 'supportNotices':
+                return <AdminSupportNotices />;
+            case 'companies':
+                return <AdminCompanies />;
+            case 'conversations':
+                return <AdminConversations focusConversationId={pendingConversationFocus} />;
+            case 'learning':
+                return <AdminLearningMetrics />;
+            case 'defaultResponses':
+                return <AdminDefaultResponses />;
             case 'chatbot': // New view for chatbot testing
                 return (
                      <div className="animate-fade-in h-full flex flex-col items-center justify-center">
@@ -356,7 +605,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 <div className="p-6 border-b border-border">
                     <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent flex items-center mb-1">
                         <span className="text-2xl mr-2">⚡</span>
-                        Admin Prio
+                        Suporte Yoobe
                     </h2>
                     <p className="text-xs text-muted-foreground">Painel Administrativo</p>
                 </div>
@@ -440,6 +689,71 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                         Base de Conhecimento
                     </motion.a>
                     <motion.a 
+                        onClick={() => setView('companies')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'companies' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>🏢</span>
+                        Empresas
+                    </motion.a>
+                    <motion.a 
+                        onClick={() => setView('supportNotices')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'supportNotices' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>🔔</span>
+                        Avisos
+                    </motion.a>
+                    <motion.a 
+                        onClick={() => setView('conversations')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'conversations' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>💬</span>
+                        Conversas & Usuários
+                    </motion.a>
+                    <motion.a 
+                        onClick={() => setView('learning')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'learning' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <BrainIcon className="w-4 h-4" />
+                        Aprendizado
+                    </motion.a>
+                    <motion.a 
+                        onClick={() => setView('defaultResponses')} 
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-md ${
+                            view === 'defaultResponses' 
+                                ? 'bg-primary text-primary-foreground shadow-md' 
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                    >
+                        <span>📝</span>
+                        Respostas Padrão
+                    </motion.a>
+                    <motion.a 
                         onClick={() => setView('arquivados')} 
                         whileHover={{ x: 4 }}
                         whileTap={{ scale: 0.98 }}
@@ -468,14 +782,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
                 </nav>
                 <div className="p-4 border-t border-border space-y-2">
                     {onSwitchToClient && (
-                        <Button 
-                            onClick={onSwitchToClient} 
-                            variant="outline"
-                            className="w-full"
-                        >
-                            <span className="mr-2">👤</span>
-                            Ver como Cliente
-                        </Button>
+                        <div className="space-y-2">
+                            <Select
+                                value={selectedCompanyId}
+                                onValueChange={setSelectedCompanyId}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Selecione o cliente" />
+                                </SelectTrigger>
+                                <SelectContent className="z-[10000]">
+                                    <SelectItem value="general">Geral (Todos)</SelectItem>
+                                    {companies.map((company) => (
+                                        <SelectItem key={company.id} value={company.id || ''}>
+                                            {company.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Button 
+                                onClick={() => onSwitchToClient(selectedCompanyId === 'general' ? undefined : selectedCompanyId)} 
+                                variant="outline"
+                                className="w-full"
+                            >
+                                <span className="mr-2">👤</span>
+                                Ver como Cliente
+                            </Button>
+                        </div>
                     )}
                     <Button 
                         onClick={onLogout} 
@@ -489,13 +821,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onSwitchToCli
             </motion.aside>
 
             {/* Main Content */}
-            <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
+            <main className="flex-1 overflow-y-auto">
+                <DashboardHeader
+                    title="Central de Atendimento"
+                    subtitle="Gerencie chamados, conversas e empresas em tempo real"
+                    onNotificationSelect={handleNotificationSelect}
+                    className="px-6"
+                />
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     key={view}
                     transition={{ duration: 0.3 }}
+                    className="p-6 lg:p-8"
                 >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium text-muted-foreground">
+                                    Chamados Arquivados
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-bold">{archivedTicketCount}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Total de tickets fora da fila ativa
+                                </p>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium text-muted-foreground">
+                                    Conversas Arquivadas
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-bold">{archivedConversationCount}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Conversas ocultas do histórico público
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </div>
                     {renderMainContent()}
                 </motion.div>
             </main>

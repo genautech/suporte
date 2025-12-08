@@ -137,3 +137,10 @@ Após as correções:
 - A normalização agora é mais robusta e preserva todos os dados originais
 - Campos opcionais são tratados corretamente (não quebram se ausentes)
 
+
+
+
+
+
+
+

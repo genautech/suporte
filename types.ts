@@ -5,6 +5,7 @@ export enum MessageSender {
   USER = 'user',
   BOT = 'bot',
   SYSTEM = 'system',
+  ADMIN = 'admin',
 }
 
 export interface Message {
@@ -23,6 +24,7 @@ export interface ExchangeFormData {
 
 export type TicketStatus = 'aberto' | 'em_andamento' | 'resolvido' | 'fechado' | 'arquivado';
 export type TicketPriority = 'baixa' | 'media' | 'alta';
+export type TicketSource = 'manager' | 'user' | 'system' | 'automation';
 
 export interface TicketHistoryItem {
   timestamp: number;
@@ -37,15 +39,20 @@ export interface Ticket {
   description: string;
   priority: TicketPriority;
   status: TicketStatus;
+  source?: TicketSource;
   name: string;
   email: string;
   phone?: string;
   orderId?: string; // ID do pedido (compatibilidade)
   orderNumber?: string; // Número do pedido (ex: "R595531189-dup")
   conversationId?: string; // ID da conversa que gerou o ticket
+  companyId?: string; // ID da empresa (identificado pelo email do usuário, opcional para compatibilidade)
   createdAt: number;
   updatedAt: number;
   history: TicketHistoryItem[];
+  archivedAt?: number;
+  archivedBy?: string;
+  managerEscalationId?: string;
 }
 
 export interface KnowledgeBase {
@@ -115,6 +122,7 @@ export interface CubboOrder {
     customer_email?: string; // Email do cliente associado ao pedido
     shipping_email?: string; // Email de entrega (usado na busca)
     customer_phone?: string; // Telefone do cliente associado ao pedido
+    customer_name?: string; // Nome do cliente associado ao pedido
     payment_method?: string; // Método de pagamento
     total_amount?: number; // Valor total do pedido
     currency?: string; // Moeda do pedido (ex: BRL, USD)
@@ -143,23 +151,72 @@ export interface ConversationMessage {
 }
 
 export interface Conversation {
-    id?: string;
-    userId: string; // Email do usuário
-    sessionId: string; // ID único da sessão (UUID)
-    messages: ConversationMessage[];
-    orderNumbers: string[]; // Array de pedidos mencionados na conversa
-    resolved: boolean; // Se a conversa foi resolvida
-    feedback?: {
-        rating: number; // 1-5 estrelas
-        comment?: string;
-        timestamp: number;
-    };
-    attempts: number; // Contador de tentativas sem resolução
-    createdAt: number;
-    updatedAt: number;
+  id?: string;
+  userId: string; // Email do usuário
+  sessionId: string; // ID único da sessão (UUID)
+  messages: ConversationMessage[];
+  orderNumbers: string[]; // Array de pedidos mencionados na conversa
+  resolved: boolean; // Se a conversa foi resolvida
+  companyId?: string; // ID da empresa (identificado pelo email do usuário, opcional para compatibilidade)
+  assignedCompanyId?: string; // CompanyId atribuído manualmente (quando domínio não corresponde automaticamente)
+  supportUserId?: string; // ID do SupportUser relacionado
+  ticketId?: string; // ID do ticket criado a partir desta conversa
+  archived?: boolean; // Se a conversa foi arquivada
+  archivedAt?: number;
+  archivedBy?: string;
+  deleted?: boolean; // Soft delete aplicado
+  deletedAt?: number;
+  deletedBy?: string;
+  aiInsights?: ConversationAIInsights; // Insights gerados pelo Gemini AI
+  feedback?: {
+    rating?: number; // 1-5 estrelas (legado)
+    npsScore?: number; // 0-10 NPS
+    comment?: string;
+    timestamp: number;
+  };
+  attempts: number; // Contador de tentativas sem resolução
+  askedQuestions?: string[]; // Perguntas feitas pelo bot que não foram respondidas ou não encontraram resposta
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type NotificationType = 'ticket' | 'conversation' | 'manager';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  entityId: string;
+  title: string;
+  summary: string;
+  status?: string;
+  createdAt: number;
+  customerName?: string;
+  customerEmail?: string;
+  meta?: Record<string, any>;
+}
+
+export interface SupportNotice {
+  id?: string;
+  title: string;
+  content: string; // HTML rico gerado pelo editor
+  active: boolean;
+  showOnHome: boolean;
+  showOnSupport: boolean;
+  targetCompanyIds: string[]; // vazio aplica para todas
+  createdAt: number;
+  updatedAt: number;
+  createdBy?: string;
+  updatedBy?: string;
 }
 
 export type FAQCategory = 'compra' | 'troca' | 'rastreio' | 'cancelamento' | 'reembolso' | 'sla' | 'geral';
+
+export interface FAQAttachment {
+  type: 'image' | 'video' | 'file' | 'link';
+  url: string;
+  filename?: string;
+  size?: number;
+}
 
 export interface FAQEntry {
   id?: string;
@@ -173,6 +230,8 @@ export interface FAQEntry {
   updatedAt: number;
   views?: number; // Contador de visualizações
   helpful?: number; // Contador de "útil"
+  companyId?: string; // ID da empresa ("general" para FAQ padrão, opcional para compatibilidade)
+  attachments?: FAQAttachment[];
 }
 
 export type TicketSubject = 
@@ -184,6 +243,7 @@ export type TicketSubject =
   | 'produto_errado'
   | 'atraso_entrega'
   | 'duvida_pagamento'
+  | 'pontos'
   | 'outro';
 
 export interface FormField {
@@ -192,6 +252,7 @@ export interface FormField {
   type: 'text' | 'textarea' | 'select' | 'number' | 'date' | 'file';
   required?: boolean;
   placeholder?: string;
+  rows?: number;
   options?: Array<{ value: string; label: string }>;
   validation?: {
     min?: number;
@@ -219,4 +280,154 @@ export interface KnowledgeBaseEntry {
   createdAt: number;
   updatedAt: number;
   verified: boolean;
+  companyId?: string; // ID da empresa (opcional para compatibilidade)
+}
+
+export interface DefaultResponse {
+  id?: string;
+  companyId: string; // Empresa que possui esta resposta padrão
+  question: string; // Pergunta padrão (normalizada)
+  answer: string; // Resposta padrão genérica
+  keywords: string[]; // Palavras-chave para matching
+  category?: string; // Categoria (opcional)
+  active: boolean; // Se está ativa
+  usageCount: number; // Quantas vezes foi usada
+  includeInLearning?: boolean; // Incluir no aprendizado do Gemini
+  includeInAutoLearning?: boolean; // Incluir no aprendizado automático
+  createdAt: number;
+  updatedAt: number;
+  deletedAt?: number;
+  deletedBy?: string;
+}
+
+// Multi-tenant types
+export interface Company {
+  id?: string;
+  name: string;  // Nome fantasia
+  domains: string[];  // Domínios de email (ex: ["prio"])
+  keywords: string[];  // Palavras-chave (ex: ["yampi", "hapvida"])
+  greeting: string;  // Saudação personalizada
+  managerEmail: string;  // Email do gestor
+  managerName: string;  // Nome do gestor
+  managerAccessEnabled: boolean;  // Se gestor tem acesso
+  storeUrl?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type UserRole = 'admin' | 'manager' | 'client';
+
+export interface UserRoleData {
+  email: string;
+  role: UserRole;
+  companyId?: string;  // Se manager, qual empresa
+  createdAt: number;
+}
+
+// Support User tracking
+export interface SupportUser {
+  id?: string;
+  email: string; // Email do usuário (chave única)
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  firstAccessAt: number; // Timestamp do primeiro acesso
+  lastAccessAt: number; // Timestamp do último acesso
+  lastInteractionAt?: number; // Timestamp da última interação via chat
+  totalLogins: number; // Contador de logins
+  totalConversations: number; // Total de conversas iniciadas
+  totalTickets: number; // Total de tickets criados
+  assignedCompanyId?: string; // CompanyId atribuído manualmente (quando domínio não corresponde)
+  autoDetectedCompanyId?: string; // CompanyId detectado automaticamente pelo domínio
+  storeUrl?: string; // URL da loja (atribuído automaticamente da empresa identificada)
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ManagerNotificationChannel = 'email' | 'in_app';
+
+export interface ManagerNotificationPreferences {
+  newOrders: boolean;
+  escalations: boolean;
+  celebrationFeed: boolean;
+  channels: ManagerNotificationChannel[];
+  mutedUntil?: number;
+}
+
+export interface ManagerProfile {
+  id?: string;
+  companyId: string;
+  name: string;
+  email: string;
+  notificationPreferences: ManagerNotificationPreferences;
+  createdAt: number;
+  updatedAt: number;
+  lastCelebrationSeenAt?: number;
+  timezone?: string;
+}
+
+export type ManagerEscalationStatus = 'aberto' | 'em_andamento' | 'resolvido' | 'cancelado';
+
+export interface ManagerEscalation {
+  id: string;
+  companyId: string;
+  orderNumber: string;
+  orderId?: string;
+  priority: 'alta';
+  status: ManagerEscalationStatus;
+  subject: string;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+  createdBy: string;
+  managerEmail: string;
+  ticketId: string;
+  lastAdminUpdateAt?: number;
+  lastAdminSummary?: string;
+}
+
+export type ManagerNotificationType = 'novo_pedido' | 'pedido_status' | 'escalation_atualizada';
+
+export interface ManagerNotification {
+  id: string;
+  companyId: string;
+  type: ManagerNotificationType;
+  title: string;
+  summary: string;
+  createdAt: number;
+  orderNumber?: string;
+  orderId?: string;
+  escalationId?: string;
+  status?: string;
+  readBy?: string[];
+  metadata?: Record<string, any>;
+}
+
+// AI Insights para conversas
+export interface ConversationAIInsights {
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  problemType?: string; // Tipo de problema identificado
+  resolution?: string; // Como foi resolvido
+  summary?: string; // Resumo da conversa
+  keywords?: string[]; // Palavras-chave extraídas
+  analyzedAt?: number; // Timestamp da análise
+}
+
+// Customer Knowledge types
+export interface CustomerKnowledgeEntry {
+  id?: string;
+  content: string;
+  source: 'conversation' | 'ticket' | 'manual';
+  sourceId?: string; // ID da conversa ou ticket
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CustomerKnowledge {
+  id?: string;
+  companyId: string;
+  knowledgeEntries: CustomerKnowledgeEntry[];
+  createdAt: number;
+  updatedAt: number;
 }

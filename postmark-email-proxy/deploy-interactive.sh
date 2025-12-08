@@ -75,3 +75,10 @@ echo ""
 echo "  ./update-postmark-url.sh https://postmark-email-proxy-xxxxx.southamerica-east1.run.app"
 echo ""
 
+
+
+
+
+
+
+

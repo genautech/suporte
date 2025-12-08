@@ -58,15 +58,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, onClos
     }
 
     try {
+        // Nome e sobrenome são opcionais - apenas atualizar se fornecidos
         const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
 
-        if (!displayName) {
-          setError('Nome e sobrenome são obrigatórios.');
-          setIsSaving(false);
-          return;
-        }
-
-        // Update profile (name) if it has changed
+        // Update profile (name) if it has changed and displayName is provided
         if (displayName && auth.currentUser.displayName !== displayName) {
             await updateProfile(auth.currentUser, { displayName });
         }
@@ -135,26 +130,24 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, onClos
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="firstName">Nome *</Label>
+              <Label htmlFor="firstName">Nome</Label>
               <Input
                 id="firstName"
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                required
-                placeholder="Seu nome"
+                placeholder="Seu nome (opcional)"
                 disabled={isSaving}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lastName">Sobrenome *</Label>
+              <Label htmlFor="lastName">Sobrenome</Label>
               <Input
                 id="lastName"
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                required
-                placeholder="Seu sobrenome"
+                placeholder="Seu sobrenome (opcional)"
                 disabled={isSaving}
               />
             </div>

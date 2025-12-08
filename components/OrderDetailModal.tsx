@@ -10,7 +10,7 @@ import {
 import { Badge } from './ui/badge';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
-import { SupportTicketForm } from './SupportTicketForm';
+import { SupportTicketFormAdvanced } from './SupportTicketFormAdvanced';
 
 interface OrderDetailModalProps {
   order: CubboOrder | null;
@@ -494,13 +494,14 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
       {showTicketForm && (
         <Dialog open={showTicketForm} onOpenChange={setShowTicketForm}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <SupportTicketForm
+            <SupportTicketFormAdvanced
               initialData={{
                 name: orderName,
                 email: orderEmail,
                 phone: order.customer_phone || '',
                 orderNumber: order.order_number,
               }}
+              orderContext={order}
               onSubmit={handleTicketCreated}
               onClose={handleCloseTicketForm}
             />

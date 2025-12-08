@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { KnowledgeBaseEntry } from '../types';
 import { supportService } from './supportService';
+import { companyService } from './companyService';
 import { Ticket } from '../types';
 
 const knowledgeBaseCollection = collection(db, 'knowledgeBase');
@@ -35,6 +36,7 @@ export const knowledgeBaseService = {
   getKnowledgeBaseEntries: async (filters?: {
     category?: string;
     verified?: boolean;
+    companyId?: string;
   }): Promise<KnowledgeBaseEntry[]> => {
     try {
       let q: any = query(knowledgeBaseCollection, orderBy('createdAt', 'desc'));
@@ -61,7 +63,16 @@ export const knowledgeBaseService = {
       }
 
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(knowledgeEntryFromFirestore);
+      let entries = snapshot.docs.map(knowledgeEntryFromFirestore);
+      
+      // Filtrar por companyId se fornecido (inclui "general" sempre)
+      if (filters?.companyId) {
+        entries = entries.filter(entry => 
+          !entry.companyId || entry.companyId === filters.companyId || entry.companyId === 'general'
+        );
+      }
+      
+      return entries;
     } catch (error) {
       console.error('Error fetching knowledge base entries:', error);
       return [];
@@ -131,11 +142,13 @@ export const knowledgeBaseService = {
 
   searchKnowledgeBase: async (
     queryText: string,
-    useGemini: boolean = false
+    useGemini: boolean = false,
+    companyId?: string
   ): Promise<{ answer: string; sources: KnowledgeBaseEntry[] }> => {
     try {
       const allEntries = await knowledgeBaseService.getKnowledgeBaseEntries({
         verified: true,
+        companyId,
       });
 
       const lowerQuery = queryText.toLowerCase();
@@ -147,7 +160,7 @@ export const knowledgeBaseService = {
           let score = 0;
           const titleLower = entry.title.toLowerCase();
           const contentLower = entry.content.toLowerCase();
-          const tagsLower = entry.tags.join(' ').toLowerCase();
+          const tagsLower = (entry.tags || []).join(' ').toLowerCase();
 
           if (titleLower.includes(lowerQuery)) score += 10;
           if (contentLower.includes(lowerQuery)) score += 5;
@@ -206,6 +219,21 @@ export const knowledgeBaseService = {
         return null;
       }
 
+      let resolvedCompanyId = ticket.companyId;
+      if (!resolvedCompanyId && ticket.email) {
+        try {
+          resolvedCompanyId = await companyService.getCompanyFromEmail(ticket.email);
+        } catch (companyError) {
+          console.warn('[knowledgeBaseService] Não foi possível identificar empresa do ticket, usando "general"', {
+            ticketId,
+            error: companyError instanceof Error ? companyError.message : String(companyError),
+          });
+        }
+      }
+      if (!resolvedCompanyId) {
+        resolvedCompanyId = 'general';
+      }
+
       // Extrair informações relevantes do ticket
       const title = `Solução para: ${ticket.subject}`;
       const content = `Problema: ${ticket.description}\n\nSolução: ${
@@ -224,6 +252,7 @@ export const knowledgeBaseService = {
         source: 'ticket',
         relatedTickets: [ticketId],
         verified: false, // Precisa ser verificado por admin
+        companyId: resolvedCompanyId,
       });
 
       return entryId;

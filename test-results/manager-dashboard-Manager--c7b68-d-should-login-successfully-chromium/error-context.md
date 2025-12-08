@@ -1,0 +1,60 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - complementary [ref=e5]:
+      - generic [ref=e6]:
+        - heading "🏢 PRIO" [level=2] [ref=e7]:
+          - generic [ref=e8]: 🏢
+          - text: PRIO
+        - paragraph [ref=e9]: Painel do Gestor
+      - navigation [ref=e10]:
+        - generic [ref=e11]:
+          - generic [ref=e12]: 🎫
+          - text: Chamados
+        - generic [ref=e13]:
+          - generic [ref=e14]: 📦
+          - text: Pedidos
+        - generic [ref=e15]:
+          - generic [ref=e16]: ❓
+          - text: FAQ
+        - generic [ref=e17]:
+          - generic [ref=e18]: 📚
+          - text: Base de Conhecimento
+        - generic [ref=e19]:
+          - generic [ref=e20]: 💬
+          - text: Interações
+        - generic [ref=e21]:
+          - generic [ref=e22]: 👥
+          - text: Usuários
+      - button "Sair" [ref=e24] [cursor=pointer]:
+        - img
+        - text: Sair
+    - main [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - generic [ref=e28]:
+            - heading "Chamados Concluídos" [level=3] [ref=e30]
+            - generic [ref=e31]:
+              - generic [ref=e32]: "0"
+              - paragraph [ref=e33]: Resolvidos e fechados
+          - generic [ref=e34]:
+            - heading "Pedidos Realizados" [level=3] [ref=e36]
+            - generic [ref=e37]:
+              - generic [ref=e38]: "0"
+              - paragraph [ref=e39]: Total de pedidos relacionados
+          - generic [ref=e40]:
+            - heading "Pedidos Enviados" [level=3] [ref=e42]
+            - generic [ref=e43]:
+              - generic [ref=e44]: "0"
+              - paragraph [ref=e45]: Enviados e entregues
+        - generic [ref=e47]:
+          - heading "Chamados de Suporte" [level=1] [ref=e48]
+          - paragraph [ref=e49]: Chamados da empresa PRIO
+        - generic [ref=e51]:
+          - paragraph [ref=e52]: Nenhum chamado encontrado para esta empresa.
+          - paragraph [ref=e53]: Verifique se os chamados foram atribuídos corretamente à empresa ou se os usuários relacionados estão atribuídos à empresa.
+  - region "Notifications (F8)":
+    - list
+```

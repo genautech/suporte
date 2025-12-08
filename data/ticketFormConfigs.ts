@@ -480,6 +480,60 @@ export const ticketFormConfigs: Record<TicketSubject, TicketFormConfig> = {
     ],
   },
 
+  pontos: {
+    subject: 'pontos',
+    questions: [
+      'Você percebeu alguma inconsistência com seus pontos?',
+      'Qual pedido está relacionado ao problema com pontos?',
+      'Quantos pontos você tinha disponível antes do problema?',
+    ],
+    fields: [
+      {
+        name: 'orderNumber',
+        label: 'Número do Pedido (se relacionado)',
+        type: 'text',
+        required: false,
+        placeholder: 'Ex: R595531189-dup (opcional)',
+      },
+      {
+        name: 'pointsIssue',
+        label: 'O que você percebeu de errado?',
+        type: 'select',
+        required: true,
+        options: [
+          { value: 'menos_pontos', label: 'Tenho menos pontos do que deveria' },
+          { value: 'pontos_sumiram', label: 'Pontos sumiram completamente' },
+          { value: 'desconto_duplicado', label: 'Foi descontado pontos duas vezes (duplicado)' },
+          { value: 'pontos_nao_creditados', label: 'Pontos não foram creditados após compra' },
+          { value: 'outro', label: 'Outro problema' },
+        ],
+      },
+      {
+        name: 'pointsAvailable',
+        label: 'Quantos pontos você tinha disponível antes do problema?',
+        type: 'number',
+        required: false,
+        placeholder: 'Ex: 500',
+      },
+      {
+        name: 'pointsDetails',
+        label: 'Detalhes do Problema',
+        type: 'textarea',
+        required: true,
+        placeholder: 'Descreva em detalhes o que aconteceu com seus pontos...',
+        rows: 4,
+      },
+      {
+        name: 'expectedResolution',
+        label: 'O que você espera como resolução?',
+        type: 'textarea',
+        required: false,
+        placeholder: 'Ex: Quero que meus pontos sejam restaurados...',
+        rows: 3,
+      },
+    ],
+  },
+
   outro: {
     subject: 'outro',
     questions: [

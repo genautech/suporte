@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 interface FAQAreaProps {
   onOpenTicket?: () => void;
+  companyId?: string; // ID da empresa para filtrar FAQ
 }
 
 const categoryLabels: Record<FAQCategory, string> = {
@@ -32,7 +33,7 @@ const categoryIcons: Record<FAQCategory, string> = {
   geral: '❓',
 };
 
-export const FAQArea: React.FC<FAQAreaProps> = ({ onOpenTicket }) => {
+export const FAQArea: React.FC<FAQAreaProps> = ({ onOpenTicket, companyId }) => {
   const [selectedCategory, setSelectedCategory] = useState<FAQCategory | 'todos'>('todos');
   const [faqEntries, setFaqEntries] = useState<FAQEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,13 +44,13 @@ export const FAQArea: React.FC<FAQAreaProps> = ({ onOpenTicket }) => {
 
   useEffect(() => {
     loadFAQEntries();
-  }, [selectedCategory]);
+  }, [selectedCategory, companyId]);
 
   const loadFAQEntries = async () => {
     try {
       const entries = selectedCategory === 'todos'
-        ? await faqService.getFAQEntries()
-        : await faqService.getFAQEntries(selectedCategory);
+        ? await faqService.getFAQEntries(undefined, companyId)
+        : await faqService.getFAQEntries(selectedCategory, companyId);
       setFaqEntries(entries);
     } catch (error) {
       console.error('Error loading FAQ entries:', error);
@@ -66,7 +67,7 @@ export const FAQArea: React.FC<FAQAreaProps> = ({ onOpenTicket }) => {
 
     setIsSearching(true);
     try {
-      const results = await faqService.searchFAQ(query);
+      const results = await faqService.searchFAQ(query, companyId);
       setSearchResults(results);
       
       // Incrementar views das entradas encontradas

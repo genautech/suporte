@@ -65,3 +65,10 @@ echo "Próximos passos:"
 echo "1. Reinicie o servidor de desenvolvimento (npm run dev)"
 echo "2. Faça um novo build se necessário (npm run build)"
 
+
+
+
+
+
+
+

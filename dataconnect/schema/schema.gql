@@ -1,0 +1,37 @@
+type User @table {
+  email: String!
+  displayName: String!
+  createdAt: Timestamp!
+  userType: String!
+  photoUrl: String
+}
+
+type Conversation @table {
+  user: User!
+  createdAt: Timestamp!
+  status: String!
+  agent: Agent
+}
+
+type Message @table {
+  conversation: Conversation!
+  sender: User!
+  createdAt: Timestamp!
+  text: String!
+  senderType: String!
+  rating: Int
+}
+
+type FAQ @table {
+  question: String!
+  answer: String!
+  createdAt: Timestamp!
+  category: String
+}
+
+type Agent @table {
+  user: User!
+  availabilityStatus: String!
+  createdAt: Timestamp!
+  skills: [String]
+}

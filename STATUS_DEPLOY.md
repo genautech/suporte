@@ -145,3 +145,10 @@ curl -X POST https://cubbo-auth-proxy-409489811769.southamerica-east1.run.app/ \
 
 
 
+
+
+
+
+
+
+

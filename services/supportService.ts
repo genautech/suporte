@@ -14,12 +14,175 @@ import {
   arrayUnion,
   Timestamp,
   setDoc,
+  QueryConstraint,
 } from 'firebase/firestore';
-import { Ticket, TicketStatus, KnowledgeBase, ApiConfig, CubboOrder, PickupLocation, TicketSubject, TicketFormConfig } from '../types';
+import { Ticket, TicketStatus, KnowledgeBase, ApiConfig, CubboOrder, PickupLocation, TicketSubject, TicketFormConfig, Company } from '../types';
 import { getTicketFormConfig } from '../data/ticketFormConfigs';
+import { companyService } from './companyService';
+import { userService } from './userService';
+import { orderCacheService } from './orderCacheService';
+import { deriveAllowedDomains, emailMatchesAllowedDomains } from './domainUtils';
 
 const ticketsCollection = collection(db, 'tickets');
 const apiConfigsCollection = collection(db, 'apiConfigs');
+
+const CUSTOMER_CACHE_TTL_MS = 60 * 1000;
+const COMPANY_CACHE_TTL_MS = 5 * 60 * 1000;
+const customerOrderMemoryCache = new Map<string, { expiresAt: number; orders: CubboOrder[] }>();
+
+interface GetTicketsOptions {
+  companyId?: string;
+}
+
+const hasTimeZoneInfo = (value: string): boolean => /([zZ]|[+-]\d{2}:?\d{2})$/.test(value);
+
+const parseFlexibleDateString = (value: string): Date | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    if (!Number.isNaN(numeric)) {
+      const ms = trimmed.length <= 10 ? numeric * 1000 : numeric;
+      const numericDate = new Date(ms);
+      if (!Number.isNaN(numericDate.getTime())) {
+        return numericDate;
+      }
+    }
+  }
+
+  const candidates = new Set<string>();
+  candidates.add(trimmed);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    candidates.add(`${trimmed}T00:00:00Z`);
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}\s/.test(trimmed)) {
+    const isoSpace = trimmed.replace(' ', 'T');
+    candidates.add(isoSpace);
+    if (!hasTimeZoneInfo(isoSpace)) {
+      candidates.add(`${isoSpace}Z`);
+    }
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed)) {
+    candidates.add(`${trimmed}:00`);
+  }
+
+  if (!hasTimeZoneInfo(trimmed) && /\.\d+$/.test(trimmed)) {
+    candidates.add(`${trimmed}Z`);
+  }
+
+  if (/(?:\+|\-)\d{4}$/.test(trimmed) && !/(?:\+|\-)\d{2}:\d{2}$/.test(trimmed)) {
+    candidates.add(trimmed.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+  }
+
+  const brMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (brMatch) {
+    const [, day, month, year, hour = '00', minute = '00', second = '00'] = brMatch;
+    const brDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
+    if (!Number.isNaN(brDate.getTime())) {
+      return brDate;
+    }
+  }
+
+  for (const candidate of candidates) {
+    const candidateDate = new Date(candidate);
+    if (!Number.isNaN(candidateDate.getTime())) {
+      return candidateDate;
+    }
+  }
+
+  return null;
+};
+
+const normalizeDateValue = (value: any): string | undefined => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+  }
+
+  if (typeof value === 'object') {
+    const maybeSeconds =
+      value && typeof (value as { seconds?: number }).seconds === 'number'
+        ? (value as { seconds: number }).seconds
+        : value && typeof (value as { _seconds?: number })._seconds === 'number'
+          ? (value as { _seconds: number })._seconds
+          : undefined;
+    const maybeNanoseconds =
+      value && typeof (value as { nanoseconds?: number }).nanoseconds === 'number'
+        ? (value as { nanoseconds: number }).nanoseconds
+        : value && typeof (value as { _nanoseconds?: number })._nanoseconds === 'number'
+          ? (value as { _nanoseconds: number })._nanoseconds
+          : undefined;
+    const seconds = typeof maybeSeconds === 'number' ? maybeSeconds : undefined;
+    const nanoseconds = typeof maybeNanoseconds === 'number' ? maybeNanoseconds : undefined;
+    if (typeof seconds === 'number') {
+      const msFromSeconds = seconds * 1000;
+      const extraMs = typeof nanoseconds === 'number' ? Math.floor(nanoseconds / 1_000_000) : 0;
+      const timestamp = msFromSeconds + extraMs;
+      const date = new Date(timestamp);
+      return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+    }
+  }
+
+  if (typeof value === 'number') {
+    const timestamp = value < 10000000000 ? value * 1000 : value;
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseFlexibleDateString(value);
+    return parsed ? parsed.toISOString() : undefined;
+  }
+
+  return undefined;
+};
+
+const resolveDateField = (
+  values: any[],
+  options: { fieldName: string; orderData?: any; fallbackToNow?: boolean }
+): string | undefined => {
+  for (const raw of values) {
+    const normalized = normalizeDateValue(raw);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  const hasRawValue = values.some((val) => {
+    if (val === undefined || val === null) {
+      return false;
+    }
+    if (typeof val === 'string') {
+      return val.trim().length > 0;
+    }
+    return true;
+  });
+
+  if (hasRawValue) {
+    console.warn(`[normalizeOrderData] Não foi possível interpretar ${options.fieldName}:`, {
+      orderId: options.orderData?.id || options.orderData?.order_number,
+      rawValues: values,
+    });
+  }
+
+  if (options.fallbackToNow) {
+    console.warn(`[normalizeOrderData] ${options.fieldName} ausente/ inválido, usando timestamp atual`, {
+      orderId: options.orderData?.id || options.orderData?.order_number,
+    });
+    return new Date().toISOString();
+  }
+
+  return undefined;
+};
 
 // --- Helpers ---
 
@@ -36,39 +199,26 @@ const ticketFromFirestore = (docSnapshot: any): Ticket => {
 // Helper para normalizar dados de pedidos da API Cubbo
 const normalizeOrderData = (orderData: any): CubboOrder => {
   // Normalizar data de criação - pode vir em diferentes formatos
-  let createdAt = orderData.created_at || orderData.createdAt || orderData.created || orderData.date_created;
+  const createdAtCandidates = [
+    orderData.created_at,
+    orderData.createdAt,
+    orderData.created,
+    orderData.date_created,
+    orderData.order_created_at,
+    orderData.order_created,
+    orderData.orderDate,
+    orderData.order_date,
+  ];
+  const createdAt = resolveDateField(createdAtCandidates, {
+    fieldName: 'created_at',
+    orderData,
+    fallbackToNow: true,
+  });
   
-  // Se a data já é uma string ISO válida, usar diretamente
-  // Se for um timestamp numérico, converter
-  // Se não existir, usar data atual como fallback
-  if (!createdAt) {
-    createdAt = new Date().toISOString();
-  } else if (typeof createdAt === 'number') {
-    // Se for timestamp em segundos, converter para milissegundos
-    createdAt = createdAt < 10000000000 ? createdAt * 1000 : createdAt;
-    createdAt = new Date(createdAt).toISOString();
-  } else if (typeof createdAt === 'string') {
-    // Validar se é uma data válida
-    const date = new Date(createdAt);
-    if (isNaN(date.getTime())) {
-      console.warn('[normalizeOrderData] Data inválida recebida:', createdAt);
-      createdAt = new Date().toISOString();
-    }
-  }
-  
-  // Normalizar data de atualização
-  let updatedAt = orderData.updated_at || orderData.updatedAt || orderData.updated || orderData.date_modified;
-  if (updatedAt) {
-    if (typeof updatedAt === 'number') {
-      updatedAt = updatedAt < 10000000000 ? updatedAt * 1000 : updatedAt;
-      updatedAt = new Date(updatedAt).toISOString();
-    } else if (typeof updatedAt === 'string') {
-      const date = new Date(updatedAt);
-      if (isNaN(date.getTime())) {
-        updatedAt = undefined;
-      }
-    }
-  }
+  const updatedAt = resolveDateField(
+    [orderData.updated_at, orderData.updatedAt, orderData.updated, orderData.date_modified],
+    { fieldName: 'updated_at', orderData }
+  );
   
   // Normalizar produtos - API Cubbo retorna como 'order_lines' (estrutura completa)
   // Formato: order_lines[{ id, sku, quantity, product: { id, name, sku, price, ... } }]
@@ -147,44 +297,16 @@ const normalizeOrderData = (orderData: any): CubboOrder => {
   }
   
   // Mapear data de envio - API Cubbo retorna como 'shipping_date'
-  let shippedAt = orderData.shipping_date || orderData.shipped_at || orderData.shipment_date;
-  if (shippedAt) {
-    try {
-      if (typeof shippedAt === 'number') {
-        shippedAt = shippedAt < 10000000000 ? shippedAt * 1000 : shippedAt;
-        shippedAt = new Date(shippedAt).toISOString();
-      } else if (typeof shippedAt === 'string') {
-        const date = new Date(shippedAt);
-        if (isNaN(date.getTime())) {
-          shippedAt = undefined;
-        } else {
-          shippedAt = date.toISOString();
-        }
-      }
-    } catch (e) {
-      shippedAt = undefined;
-    }
-  }
+  const shippedAt = resolveDateField(
+    [orderData.shipping_date, orderData.shipped_at, orderData.shipment_date],
+    { fieldName: 'shipped_at', orderData }
+  );
   
   // Mapear data de entrega/recebimento
-  let deliveredAt = orderData.delivered_at || orderData.delivery_date || orderData.received_at;
-  if (deliveredAt) {
-    try {
-      if (typeof deliveredAt === 'number') {
-        deliveredAt = deliveredAt < 10000000000 ? deliveredAt * 1000 : deliveredAt;
-        deliveredAt = new Date(deliveredAt).toISOString();
-      } else if (typeof deliveredAt === 'string') {
-        const date = new Date(deliveredAt);
-        if (isNaN(date.getTime())) {
-          deliveredAt = undefined;
-        } else {
-          deliveredAt = date.toISOString();
-        }
-      }
-    } catch (e) {
-      deliveredAt = undefined;
-    }
-  }
+  const deliveredAt = resolveDateField(
+    [orderData.delivered_at, orderData.delivery_date, orderData.received_at],
+    { fieldName: 'delivered_at', orderData }
+  );
 
   // Mapear comprovante de recebimento
   const receiptUrl = orderData.receipt_url || orderData.receipt_proof_url;
@@ -391,35 +513,73 @@ const normalizeOrderData = (orderData: any): CubboOrder => {
   return normalizedOrder as CubboOrder;
 };
 
+const buildCustomerCacheKey = (user: { email?: string | null; phone?: string | null }, companyId?: string | null) => {
+  const email = (user.email || '').trim().toLowerCase();
+  const phone = (user.phone || '').replace(/\D/g, '');
+  const companySegment = companyId || 'unknown';
+  return `${companySegment}:${email}:${phone}`;
+};
+
 // Extrair códigos de pedido do texto
 const extractOrderNumbers = (text: string): string[] => {
   const orderNumbers: string[] = [];
   
   // Padrões para códigos de pedido:
-  // - R seguido de números (ex: R123456, R595531189-dup)
-  // - LP- seguido de números (ex: LP-12345)
-  // - Pedido seguido de código (ex: pedido R123)
+  // - R seguido de números (ex: R123456, R595531189-dup, #R123456)
+  // - LP- seguido de números (ex: LP-12345, #LP-12345)
+  // - Pedido seguido de código (ex: pedido R123, pedido #R123)
+  // - Números puros quando o contexto indica (ex: quando usuário responde sobre código de pedido)
+  // - "#" é opcional e será removido antes de retornar
   // - Padrões similares
   
   const patterns = [
-    /\bR\d+[-\w]*/gi, // R123456, R595531189-dup
-    /\bLP[-_]?\d+/gi, // LP-12345, LP12345
-    /pedido\s+([R\d]+[-\w]*)/gi, // pedido R123456
-    /order\s+([R\d]+[-\w]*)/gi, // order R123456
+    /#?\bR\d+[-\w]*/gi, // R123456, R595531189-dup, #R123456, #R595531189-dup
+    /#?\bLP[-_]?\d+/gi, // LP-12345, LP12345, #LP-12345
+    /#?\b[A-Za-z]+\d+[-\w]*/gi, // Códigos genéricos: ABC123, XYZ456, qualquer letra seguida de números
+    /pedido\s+#?([A-Za-z\d]+[-\w]*)/gi, // pedido R123456, pedido ABC123, pedido #R123456
+    /order\s+#?([A-Za-z\d]+[-\w]*)/gi, // order R123456, order ABC123, order #R123456
   ];
   
   patterns.forEach(pattern => {
     const matches = text.match(pattern);
     if (matches) {
       matches.forEach(match => {
-        // Limpar espaços e caracteres extras
-        const cleaned = match.replace(/^(pedido|order)\s+/i, '').trim();
-        if (cleaned && !orderNumbers.includes(cleaned)) {
+        // Limpar espaços, caracteres extras e "#" opcional
+        let cleaned = match.replace(/^(pedido|order)\s+/i, '').trim();
+        cleaned = cleaned.replace(/^#+/, '').trim(); // Remover "#" do início
+        
+        // Se o padrão capturou um grupo (ex: pedido ABC123), usar apenas o grupo capturado
+        // Verificar se há grupos de captura no padrão
+        const groupMatch = match.match(/^(pedido|order)\s+#?([A-Za-z\d]+[-\w]*)/i);
+        if (groupMatch && groupMatch[2]) {
+          cleaned = groupMatch[2].trim();
+        }
+        
+        // Validar que é um código válido (pelo menos uma letra seguida de números)
+        // OU número puro com pelo menos 6 dígitos (provavelmente código de pedido)
+        const isValidCodeWithLetters = cleaned && /^[A-Za-z]+\d+/.test(cleaned);
+        const isValidPureNumber = cleaned && /^\d{6,}$/.test(cleaned); // Números com 6+ dígitos
+        
+        if ((isValidCodeWithLetters || isValidPureNumber) && !orderNumbers.includes(cleaned)) {
           orderNumbers.push(cleaned);
         }
       });
     }
   });
+  
+  // Se não encontrou códigos com padrões, tentar extrair números puros longos (6+ dígitos)
+  // Isso ajuda quando o usuário digita apenas números como resposta
+  if (orderNumbers.length === 0) {
+    const pureNumberPattern = /\b\d{6,}\b/g; // Números com 6 ou mais dígitos
+    const numberMatches = text.match(pureNumberPattern);
+    if (numberMatches) {
+      numberMatches.forEach(match => {
+        if (!orderNumbers.includes(match)) {
+          orderNumbers.push(match);
+        }
+      });
+    }
+  }
   
   return orderNumbers;
 };
@@ -514,19 +674,110 @@ const getAccessToken = async (): Promise<string> => {
 
 // --- Public Service Methods ---
 
+interface GetCompanyOrdersOptions {
+  status?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  forceRefresh?: boolean;
+  cacheTtlMs?: number;
+  useCache?: boolean;
+  allowedCustomerDomains?: string[];
+}
+
+const filterCompanyOrders = (orders: CubboOrder[], options?: GetCompanyOrdersOptions): CubboOrder[] => {
+  if (!options) {
+    return orders;
+  }
+
+  let filtered = [...orders];
+
+  if (options.allowedCustomerDomains && options.allowedCustomerDomains.length > 0) {
+    filtered = filtered.filter((order) =>
+      emailMatchesAllowedDomains(
+        order.customer_email || order.shipping_email,
+        options.allowedCustomerDomains
+      )
+    );
+  }
+
+  if (options.status) {
+    const target = options.status.toLowerCase();
+    filtered = filtered.filter((order) => (order.status || '').toLowerCase() === target);
+  }
+
+  if (options.search) {
+    const term = options.search.toLowerCase();
+    filtered = filtered.filter((order) => {
+      const haystack = [
+        order.order_number,
+        order.id,
+        order.customer_name,
+        order.customer_email,
+        order.shipping_email,
+        (order.items_summary || []).join(' '),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }
+
+  return filtered;
+};
+
+interface FindOrdersOptions {
+  limit?: number;
+  companyId?: string;
+  useCache?: boolean;
+  forceRefresh?: boolean;
+  cacheTtlMs?: number;
+}
+
 export const supportService = {
   // Ticket functions
-  getTickets: async (includeArchived: boolean = false): Promise<Ticket[]> => {
-    const q = query(ticketsCollection, orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-    const allTickets = snapshot.docs.map(ticketFromFirestore);
+  getTickets: async (includeArchived: boolean = false, options?: GetTicketsOptions): Promise<Ticket[]> => {
+    const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
     
-    // Se não incluir arquivados, filtrar
+    if (options?.companyId) {
+      constraints.unshift(where('companyId', '==', options.companyId));
+    }
+
+    const q = query(ticketsCollection, ...constraints);
+    const snapshot = await getDocs(q);
+    let tickets = snapshot.docs.map(ticketFromFirestore);
+    
     if (!includeArchived) {
-      return allTickets.filter(ticket => ticket.status !== 'arquivado');
+      tickets = tickets.filter(ticket => ticket.status !== 'arquivado');
     }
     
-    return allTickets;
+    return tickets;
+  },
+
+  getTicketById: async (ticketId: string): Promise<Ticket | null> => {
+    try {
+      const ticketRef = doc(ticketsCollection, ticketId);
+      const snapshot = await getDoc(ticketRef);
+      if (!snapshot.exists()) {
+        return null;
+      }
+      return ticketFromFirestore(snapshot);
+    } catch (error) {
+      console.error('[supportService] Erro ao buscar ticket por ID:', error);
+      return null;
+    }
+  },
+
+  getArchivedTicketCount: async (): Promise<number> => {
+    try {
+      const q = query(ticketsCollection, where('status', '==', 'arquivado'));
+      const snapshot = await getDocs(q);
+      return snapshot.size;
+    } catch (error) {
+      console.error('[supportService] Erro ao contar tickets arquivados:', error);
+      return 0;
+    }
   },
 
   getTicketsByUser: async (user: { email?: string | null; phone?: string | null }): Promise<Ticket[]> => {
@@ -570,10 +821,28 @@ export const supportService = {
         }
       }
       
-      const newTicket = {
-          ...ticketData,
-          orderId: orderId || ticketData.orderId,
-          phone: ticketData.phone?.replace(/\D/g, '') || '',
+      // Identificar empresa do usuário pelo email
+      let companyId: string | undefined;
+      if (ticketData.email) {
+        try {
+          companyId = await companyService.getCompanyFromEmail(ticketData.email);
+        } catch (error) {
+          console.error('[createTicket] Erro ao identificar empresa:', error);
+          companyId = 'general'; // Fallback seguro
+        }
+      }
+      
+      // Remover campos undefined para evitar erro no Firebase
+      const cleanTicketData: Record<string, any> = {
+          subject: ticketData.subject,
+          description: ticketData.description || 'Ticket criado pelo cliente.',
+          priority: ticketData.priority,
+          status: ticketData.status,
+          name: ticketData.name,
+          email: ticketData.email,
+          phone: ticketData.phone?.replace(/\D/g, '') || undefined,
+          orderNumber: ticketData.orderNumber || undefined,
+          companyId: companyId || ticketData.companyId || undefined,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           history: [{
@@ -583,33 +852,65 @@ export const supportService = {
               content: ticketData.description || 'Ticket criado pelo cliente.'
           }]
       };
-      const docRef = await addDoc(ticketsCollection, newTicket);
+      
+      // Adicionar orderId apenas se existir
+      const finalOrderId = orderId || ticketData.orderId;
+      if (finalOrderId) {
+          cleanTicketData.orderId = finalOrderId;
+      }
+      
+      // Remover campos undefined antes de salvar
+      Object.keys(cleanTicketData).forEach(key => {
+          if (cleanTicketData[key] === undefined) {
+              delete cleanTicketData[key];
+          }
+      });
+      
+      const docRef = await addDoc(ticketsCollection, cleanTicketData);
       const ticketId = docRef.id;
       
-      // Enviar email de confirmação ao cliente
-      try {
-        const orderInfo = ticketData.orderNumber ? ` relacionado ao pedido ${ticketData.orderNumber}` : '';
-        const emailHtmlBody = `
-          <div style="font-family: sans-serif; line-height: 1.6;">
-            <h2>Olá ${ticketData.name},</h2>
-            <p>Seu chamado de suporte foi criado com sucesso${orderInfo}!</p>
-            <div style="background-color: #f4f4f4; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
-              <p><strong>ID do Chamado:</strong> #${ticketId.substring(0, 6)}</p>
-              <p><strong>Assunto:</strong> ${ticketData.subject}</p>
-              <p><strong>Status:</strong> Aberto</p>
-            </div>
-            <p>Nossa equipe entrará em contato em breve para resolver sua questão.</p>
-            <p>Atenciosamente,<br>Equipe Lojinha Prio by Yoobe</p>
-          </div>`;
-        
-        await supportService.sendTicketReplyEmail({
-          to: ticketData.email,
-          subject: `Chamado de Suporte Criado - #${ticketId.substring(0, 6)}`,
-          htmlBody: emailHtmlBody
+      // Registrar criação de ticket no userService
+      if (ticketData.email) {
+        userService.recordTicketCreation(ticketData.email).catch(error => {
+          console.error('[createTicket] Erro ao registrar criação de ticket:', error);
+          // Não bloquear criação do ticket se houver erro
         });
-      } catch (emailError) {
-        console.error('[createTicket] Erro ao enviar email de confirmação:', emailError);
-        // Não falhar a criação do ticket se o email falhar
+      }
+      
+      // Enviar email de confirmação ao cliente
+      // IMPORTANTE: Email é enviado para TODOS os 9 assuntos de chamado
+      if (ticketData.email && ticketData.email.trim()) {
+        try {
+          console.log('[createTicket] Enviando email para:', ticketData.email, 'Assunto:', ticketData.subject);
+          
+          const orderInfo = ticketData.orderNumber ? ` relacionado ao pedido ${ticketData.orderNumber}` : '';
+          const emailHtmlBody = `
+            <div style="font-family: sans-serif; line-height: 1.6;">
+              <h2>Olá ${ticketData.name},</h2>
+              <p>Seu chamado de suporte foi criado com sucesso${orderInfo}!</p>
+              <div style="background-color: #f4f4f4; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
+                <p><strong>ID do Chamado:</strong> #${ticketId.substring(0, 6)}</p>
+                <p><strong>Assunto:</strong> ${ticketData.subject}</p>
+                <p><strong>Status:</strong> Aberto</p>
+              </div>
+              <p>Nossa equipe entrará em contato em breve para resolver sua questão.</p>
+              <p>Atenciosamente,<br>Equipe Yoobe</p>
+            </div>`;
+          
+          await supportService.sendTicketReplyEmail({
+            to: ticketData.email.trim(),
+            subject: `Chamado de Suporte Criado - #${ticketId.substring(0, 6)}`,
+            htmlBody: emailHtmlBody,
+            bcc: 'atendimento@yoobe.co'
+          });
+          
+          console.log('[createTicket] Email enviado com sucesso para:', ticketData.email, 'Assunto:', ticketData.subject);
+        } catch (emailError) {
+          console.error('[createTicket] Erro ao enviar email de confirmação:', emailError);
+          // Não falhar a criação do ticket se o email falhar
+        }
+      } else {
+        console.warn('[createTicket] Email não fornecido ou vazio. Ticket criado sem envio de email. Assunto:', ticketData.subject);
       }
       
       return ticketId;
@@ -650,24 +951,76 @@ export const supportService = {
         };
         
         const statusText = statusMap[data.status] || data.status;
-        const emailHtmlBody = `
+        const isFinalized = data.status === 'resolvido' || data.status === 'fechado';
+        
+        // Construir corpo do email com mais detalhes se finalizado
+        let emailHtmlBody = `
           <div style="font-family: sans-serif; line-height: 1.6;">
             <h2>Olá ${ticketData.name},</h2>
-            <p>O status do seu chamado de suporte foi atualizado.</p>
+            ${isFinalized 
+              ? '<p>Seu chamado de suporte foi finalizado!</p>'
+              : '<p>O status do seu chamado de suporte foi atualizado.</p>'
+            }
             <div style="background-color: #f4f4f4; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
               <p><strong>ID do Chamado:</strong> #${id.substring(0, 6)}</p>
               <p><strong>Assunto:</strong> ${ticketData.subject}</p>
-              <p><strong>Novo Status:</strong> ${statusText}</p>
-            </div>
-            <p>Você pode acompanhar o progresso do seu chamado em nosso portal de suporte.</p>
-            <p>Atenciosamente,<br>Equipe Lojinha Prio by Yoobe</p>
+              <p><strong>Status:</strong> ${statusText}</p>
+              ${ticketData.orderNumber ? `<p><strong>Pedido Relacionado:</strong> ${ticketData.orderNumber}</p>` : ''}
+            </div>`;
+        
+        if (isFinalized) {
+          emailHtmlBody += `
+            <p>Obrigado por entrar em contato conosco. Esperamos ter resolvido sua questão satisfatoriamente.</p>
+            <p>Se precisar de mais alguma coisa, não hesite em abrir um novo chamado.</p>`;
+        } else {
+          emailHtmlBody += `<p>Você pode acompanhar o progresso do seu chamado em nosso portal de suporte.</p>`;
+        }
+        
+        emailHtmlBody += `
+            <p>Atenciosamente,<br>Equipe Yoobe</p>
           </div>`;
         
+        // Enviar email ao cliente
         await supportService.sendTicketReplyEmail({
           to: ticketData.email,
-          subject: `Atualização do Chamado #${id.substring(0, 6)} - Status: ${statusText}`,
-          htmlBody: emailHtmlBody
+          subject: isFinalized 
+            ? `Chamado Finalizado - #${id.substring(0, 6)}`
+            : `Atualização do Chamado #${id.substring(0, 6)} - Status: ${statusText}`,
+          htmlBody: emailHtmlBody,
+          bcc: 'atendimento@yoobe.co'
         });
+        
+        // Se finalizado, também enviar email ao gestor da empresa (se houver companyId)
+        if (isFinalized && ticketData.companyId) {
+          try {
+            const company = await companyService.getCompany(ticketData.companyId);
+            if (company && company.managerEmail) {
+              const managerEmailBody = `
+                <div style="font-family: sans-serif; line-height: 1.6;">
+                  <h2>Olá,</h2>
+                  <p>Um chamado de suporte da sua empresa foi finalizado.</p>
+                  <div style="background-color: #f4f4f4; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
+                    <p><strong>ID do Chamado:</strong> #${id.substring(0, 6)}</p>
+                    <p><strong>Cliente:</strong> ${ticketData.name} (${ticketData.email})</p>
+                    <p><strong>Assunto:</strong> ${ticketData.subject}</p>
+                    <p><strong>Status:</strong> ${statusText}</p>
+                    ${ticketData.orderNumber ? `<p><strong>Pedido Relacionado:</strong> ${ticketData.orderNumber}</p>` : ''}
+                  </div>
+                  <p>Atenciosamente,<br>Equipe Yoobe</p>
+                </div>`;
+              
+              await supportService.sendTicketReplyEmail({
+                to: company.managerEmail,
+                subject: `Chamado Finalizado - #${id.substring(0, 6)} - ${company.name}`,
+                htmlBody: managerEmailBody,
+                bcc: 'atendimento@yoobe.co'
+              });
+            }
+          } catch (managerEmailError) {
+            console.error('[updateTicket] Erro ao enviar email ao gestor:', managerEmailError);
+            // Não falhar se não conseguir enviar ao gestor
+          }
+        }
       } catch (emailError) {
         console.error('[updateTicket] Erro ao enviar email de atualização:', emailError);
         // Não falhar a atualização se o email falhar
@@ -706,6 +1059,7 @@ export const supportService = {
     await updateDoc(ticketDoc, { 
       status: 'arquivado', 
       history: arrayUnion(newHistoryItem), 
+      archivedAt: serverTimestamp(),
       updatedAt: serverTimestamp() 
     });
   },
@@ -770,6 +1124,7 @@ export const supportService = {
     await updateDoc(ticketDoc, { 
       status: previousStatus, 
       history: arrayUnion(newHistoryItem), 
+      archivedAt: null,
       updatedAt: serverTimestamp() 
     });
   },
@@ -814,13 +1169,14 @@ export const supportService = {
               <p><strong>Novo Status:</strong> ${statusText}</p>
             </div>
             <p>Você pode acompanhar o progresso do seu chamado em nosso portal de suporte.</p>
-            <p>Atenciosamente,<br>Equipe Lojinha Prio by Yoobe</p>
+            <p>Atenciosamente,<br>Equipe Yoobe</p>
           </div>`;
         
         await supportService.sendTicketReplyEmail({
           to: ticketData.email,
           subject: `Atualização do Chamado #${id.substring(0, 6)} - Status: ${statusText}`,
-          htmlBody: emailHtmlBody
+          htmlBody: emailHtmlBody,
+          bcc: 'atendimento@yoobe.co'
         });
       } catch (emailError) {
         console.error('[updateTicketStatus] Erro ao enviar email de atualização:', emailError);
@@ -830,7 +1186,7 @@ export const supportService = {
   },
 
   // Postmark Email Service
-  sendTicketReplyEmail: async (emailData: { to: string, subject: string, htmlBody: string }): Promise<{ success: boolean; error?: string }> => {
+  sendTicketReplyEmail: async (emailData: { to: string, subject: string, htmlBody: string, cc?: string, bcc?: string }): Promise<{ success: boolean; error?: string }> => {
     // URL do proxy de email Postmark deployado no Google Cloud Run
     // Configure via variável de ambiente VITE_POSTMARK_PROXY_URL no .env.local ou no Cloud Run
     const EMAIL_PROXY_URL = ((import.meta as any).env?.VITE_POSTMARK_PROXY_URL as string) || 'https://postmark-email-proxy-409489811769.southamerica-east1.run.app'; 
@@ -970,6 +1326,28 @@ export const supportService = {
                 
                 const statusText = statusMap[order.status.toLowerCase()] || order.status;
                 let orderDetails = `📦 Pedido ${order.order_number} - Status: ${statusText} - Data: ${formattedDate}`;
+                
+                // Adicionar produtos com SKUs se disponível
+                if (order.items && order.items.length > 0) {
+                    const itemsWithSkus = order.items.map(item => {
+                        const qty = item.quantity || 1;
+                        const name = item.name || item.sku || 'Produto';
+                        const sku = item.sku ? ` (SKU: ${item.sku})` : '';
+                        return `${qty}x ${name}${sku}`;
+                    }).join(', ');
+                    orderDetails += `\n🛍️ Produtos: ${itemsWithSkus}`;
+                    
+                    // Adicionar lista de SKUs
+                    const skus = order.items
+                        .filter(item => item.sku)
+                        .map(item => item.sku)
+                        .filter((sku, index, self) => self.indexOf(sku) === index);
+                    if (skus.length > 0) {
+                        orderDetails += `\n📋 SKUs: ${skus.join(', ')}`;
+                    }
+                } else if (order.items_summary && order.items_summary.length > 0) {
+                    orderDetails += `\n🛍️ Produtos: ${order.items_summary.join(', ')}`;
+                }
                 
                 // Adicionar endereço de entrega ou local de coleta
                 if (order.pickup_location) {
@@ -1182,14 +1560,37 @@ export const supportService = {
             };
             
             const statusText = statusMap[order.status.toLowerCase()] || order.status;
-            const itemsText = order.items_summary && order.items_summary.length > 0 
-              ? order.items_summary.join(', ') 
-              : 'Produtos não especificados';
+            
+            // Formatar produtos com SKUs se disponível
+            let itemsText = 'Produtos não especificados';
+            if (order.items && order.items.length > 0) {
+                // Incluir SKUs na formatação
+                itemsText = order.items.map(item => {
+                    const qty = item.quantity || 1;
+                    const name = item.name || item.sku || 'Produto';
+                    const sku = item.sku ? ` (SKU: ${item.sku})` : '';
+                    return `${qty}x ${name}${sku}`;
+                }).join(', ');
+            } else if (order.items_summary && order.items_summary.length > 0) {
+                itemsText = order.items_summary.join(', ');
+            }
             
             let details = `📦 Pedido ${order.order_number}\n`;
             details += `Status: ${statusText}\n`;
             details += `Data: ${formattedDate}\n`;
-            details += `Produtos: ${itemsText}\n`;
+            details += `🛍️ Produtos: ${itemsText}\n`;
+            
+            // Adicionar seção de SKUs se disponível
+            if (order.items && order.items.length > 0) {
+                const skus = order.items
+                    .filter(item => item.sku)
+                    .map(item => item.sku)
+                    .filter((sku, index, self) => self.indexOf(sku) === index); // Remover duplicatas
+                
+                if (skus.length > 0) {
+                    details += `📋 SKUs: ${skus.join(', ')}\n`;
+                }
+            }
             
             // Adicionar valor total se disponível
             if (order.total_amount !== undefined) {
@@ -1275,78 +1676,121 @@ export const supportService = {
     }
   },
   
-  findOrdersByCustomer: async (user: { email?: string | null; phone?: string | null }): Promise<CubboOrder[]> => {
+  findOrdersByCustomer: async (
+    user: { email?: string | null; phone?: string | null },
+    options?: FindOrdersOptions
+  ): Promise<CubboOrder[]> => {
+    const email = user.email?.trim().toLowerCase();
+    const phone = user.phone?.replace(/\D/g, '');
+    let resolvedCompanyId = options?.companyId;
+
+    if (!resolvedCompanyId && email) {
+      try {
+        resolvedCompanyId = await companyService.getCompanyFromEmail(email);
+      } catch (error) {
+        console.warn('[findOrdersByCustomer] Não foi possível identificar companyId pelo email:', email, error);
+      }
+    }
+
+    const cacheKey = buildCustomerCacheKey({ email, phone }, resolvedCompanyId);
+    const useCache = options?.useCache !== false;
+    const limit = options?.limit;
+    const cacheTtlMs = options?.cacheTtlMs || CUSTOMER_CACHE_TTL_MS;
+    const now = Date.now();
+
+    if (useCache && !options?.forceRefresh && cacheKey.trim().length > 0) {
+      const memo = customerOrderMemoryCache.get(cacheKey);
+      if (memo && memo.expiresAt > now) {
+        console.log('[findOrdersByCustomer] Cache (memória) utilizado', {
+          email,
+          phone,
+          companyId: resolvedCompanyId,
+          cachedCount: memo.orders.length,
+        });
+        const cachedOrders = limit ? memo.orders.slice(0, limit) : memo.orders;
+        return cachedOrders;
+      }
+    }
+
+    console.log('[findOrdersByCustomer] Iniciando busca remota de pedidos:', {
+      email,
+      phone: user.phone,
+      companyId: resolvedCompanyId,
+      timestamp: new Date().toISOString(),
+    });
+    
     let accessToken: string;
     let config: ApiConfig | null;
 
     try {
+        console.log('[findOrdersByCustomer] Buscando configuração da API Cubbo...');
         config = await getCubboConfig();
-        if (!config) return [];
+        if (!config) {
+            console.error("[findOrdersByCustomer] Configuração da API Cubbo não encontrada");
+            return [];
+        }
+        
+        console.log('[findOrdersByCustomer] Configuração encontrada:', {
+          url: config.url,
+          storeId: config.storeId,
+          hasClientId: !!config.clientId,
+          hasClientSecret: !!config.clientSecret
+        });
         
         if (!config.storeId) {
             console.error("[findOrdersByCustomer] store_id não configurado");
             return [];
         } 
+        
+        console.log('[findOrdersByCustomer] Obtendo access token...');
         accessToken = await getAccessToken();
+        console.log('[findOrdersByCustomer] Access token obtido com sucesso');
     } catch (error: any) {
-        console.error("Authentication failed in findOrdersByCustomer:", error);
-        return []; // Silently fail and return no orders.
-    }
-    
-    let queryParams: string[] = [];
-    
-    // Adicionar store_id primeiro (obrigatório)
-    if (config.storeId) {
-        queryParams.push(`store_id=${encodeURIComponent(config.storeId)}`);
-    }
-    
-    // Usar shipping_email ao invés de customer_email (conforme documentação da API Cubbo)
-    if (user.email) {
-        queryParams.push(`shipping_email=${encodeURIComponent(user.email)}`);
-    } else if (user.phone) {
-        const sanitizedPhone = user.phone.replace(/\D/g, '');
-        queryParams.push(`customer_phone=${sanitizedPhone}`);
-    } else {
+        console.error("[findOrdersByCustomer] Falha na autenticação:", {
+          error: error?.message || 'Erro desconhecido',
+          stack: error?.stack,
+          timestamp: new Date().toISOString()
+        });
         return [];
     }
     
-    // Adicionar parâmetros de paginação e ordenação (opcionais, mas recomendados)
-    queryParams.push(`per_page=100`);
-    queryParams.push(`page=1`);
-    queryParams.push(`sort=desc`);
-    queryParams.push(`sort_by=created_at`);
+    const baseQueryParams: string[] = [];
+    if (config.storeId) {
+        baseQueryParams.push(`store_id=${encodeURIComponent(config.storeId)}`);
+    }
+    baseQueryParams.push(`per_page=100`);
+    baseQueryParams.push(`page=1`);
+    baseQueryParams.push(`sort=desc`);
+    baseQueryParams.push(`sort_by=created_at`);
 
-    try {
-        // Usar o proxy para evitar problemas de CORS
-        const proxyUrl = getProxyUrl();
-        
+    const proxyUrl = getProxyUrl();
+    const fetchOrdersWithParams = async (label: string, extraParams: string[]): Promise<CubboOrder[]> => {
+        const queryParams = [...baseQueryParams, ...extraParams];
         const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
         const requestUrl = `${proxyUrl}/api/orders${queryString}`;
-        console.log(`[findOrdersByCustomer] Fazendo requisição via proxy para: ${requestUrl}`, { 
-            storeId: config.storeId,
-            email: user.email,
-            phone: user.phone 
+        console.log(`[findOrdersByCustomer][${label}] Fazendo requisição via proxy para: ${requestUrl}`, {
+            storeId: config?.storeId,
+            email,
+            phone,
         });
-        
+
         let response: Response;
         try {
             response = await fetch(requestUrl, {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' },
-                mode: 'cors'
+                mode: 'cors',
             });
         } catch (fetchError: any) {
-            // Captura erros de rede/CORS especificamente
             const errorMessage = fetchError.message || String(fetchError);
-            console.error(`[findOrdersByCustomer] Erro de rede ao fazer fetch:`, fetchError);
-            
+            console.error(`[findOrdersByCustomer][${label}] Erro de rede ao fazer fetch:`, fetchError);
+
             if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('CORS')) {
-                // Lançar erro para ser capturado pelo catch externo e retornar array vazio com log
                 throw new Error(`CORS/Network Error: Não foi possível conectar ao proxy da API Cubbo. URL: ${requestUrl}`);
             }
             throw fetchError;
         }
-        
+
         if (!response.ok) {
             const errorText = await response.text();
             let errorData;
@@ -1355,39 +1799,107 @@ export const supportService = {
             } catch (e) {
                 errorData = { error: errorText };
             }
-            console.error(`API Cubbo retornou status ${response.status}:`, errorData);
-            throw new Error(`Falha ao buscar pedidos: ${response.status} - ${errorData.error || errorData.details || errorText}`);
+            console.error(`[findOrdersByCustomer][${label}] API Cubbo retornou status ${response.status}:`, errorData);
+            throw new Error(`Falha ao buscar pedidos (${label}): ${response.status} - ${errorData.error || errorData.details || errorText}`);
         }
-        
+
         const data = await response.json();
-        // Log reduzido para melhor performance
-        console.log('[findOrdersByCustomer] Resposta recebida:', { 
-            ordersCount: Array.isArray(data) ? data.length : (data.orders?.length || data.data?.length || 0)
-        });
-        
-        // A API Cubbo pode retornar:
-        // - Um array diretamente
-        // - Um objeto com 'orders' contendo o array
-        // - Um objeto com 'data' contendo o array
+        console.log(`[findOrdersByCustomer][${label}] Resposta recebida (raw):`, JSON.stringify(data, null, 2));
+        console.log('[findOrdersByCustomer] Tipo da resposta:', typeof data, Array.isArray(data) ? 'Array' : 'Object');
+        if (!Array.isArray(data)) {
+            console.log('[findOrdersByCustomer] Chaves do objeto:', Object.keys(data));
+            console.log('[findOrdersByCustomer] data.orders:', data.orders);
+            console.log('[findOrdersByCustomer] data.orders tipo:', typeof data.orders, Array.isArray(data.orders) ? 'Array' : 'Object');
+            console.log('[findOrdersByCustomer] data.orders length:', data.orders?.length);
+            console.log('[findOrdersByCustomer] data.data:', data.data);
+            console.log('[findOrdersByCustomer] data.results:', data.results);
+        }
+
         let orders: any[] = [];
         if (Array.isArray(data)) {
             orders = data;
+            console.log('[findOrdersByCustomer] Resposta é array direto, quantidade:', orders.length);
         } else {
             orders = data.orders || data.data || data.results || [];
+            console.log('[findOrdersByCustomer] Extraído de objeto, quantidade:', orders.length);
+            if (orders.length === 0) {
+                console.warn('[findOrdersByCustomer] Nenhum pedido encontrado na resposta. Estrutura completa:', JSON.stringify(data, null, 2));
+            }
         }
-        
-        // Normalizar dados de cada pedido
-        return orders.map(normalizeOrderData);
+
+        console.log('[findOrdersByCustomer] Pedidos antes da normalização:', orders.length);
+        if (orders.length > 0) {
+            console.log('[findOrdersByCustomer] Primeiro pedido (raw):', JSON.stringify(orders[0], null, 2));
+        }
+
+        const normalizedOrders = orders.map(normalizeOrderData);
+
+        console.log('[findOrdersByCustomer] Pedidos após normalização:', normalizedOrders.length);
+        if (normalizedOrders.length > 0) {
+            console.log('[findOrdersByCustomer] Primeiro pedido (normalizado):', JSON.stringify(normalizedOrders[0], null, 2));
+        }
+
+        return normalizedOrders;
+    };
+
+    try {
+        const aggregatedOrdersMap = new Map<string, CubboOrder>();
+        const appendOrders = (orders: CubboOrder[]) => {
+            orders.forEach((order) => {
+                const referenceEmail = (order.customer_email || order.shipping_email || email || '').toLowerCase();
+                const key = order.id || `${order.order_number || 'unknown'}-${referenceEmail}`;
+                if (!aggregatedOrdersMap.has(key)) {
+                    aggregatedOrdersMap.set(key, order);
+                }
+            });
+        };
+
+        const extraFetches: Array<Promise<CubboOrder[]>> = [];
+
+        if (email) {
+            extraFetches.push(
+                fetchOrdersWithParams('customer_email', [`customer_email=${encodeURIComponent(email)}`])
+            );
+            extraFetches.push(
+                fetchOrdersWithParams('shipping_email', [`shipping_email=${encodeURIComponent(email)}`])
+            );
+        } else if (phone) {
+            extraFetches.push(
+                fetchOrdersWithParams('customer_phone', [`customer_phone=${encodeURIComponent(phone)}`])
+            );
+        } else {
+            return [];
+        }
+
+        const fetchedOrdersList = await Promise.all(extraFetches.map(async (promise, index) => {
+            try {
+                return await promise;
+            } catch (error) {
+                console.error('[findOrdersByCustomer] Erro ao buscar pedidos (tentativa index:' + index + '):', error);
+                return [];
+            }
+        }));
+
+        fetchedOrdersList.forEach((orders) => appendOrders(orders));
+
+        const aggregatedOrders = Array.from(aggregatedOrdersMap.values());
+
+        if (useCache && cacheKey.trim().length > 0) {
+          customerOrderMemoryCache.set(cacheKey, {
+            expiresAt: now + cacheTtlMs,
+            orders: aggregatedOrders,
+          });
+        }
+
+        return limit ? aggregatedOrders.slice(0, limit) : aggregatedOrders;
     } catch (error: any) {
         const errorMessage = error?.message || String(error);
         console.error("Failed to find orders by customer:", error);
         
-        // Log mais detalhado para diagnóstico
         if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('CORS')) {
             console.error(`[findOrdersByCustomer] Erro de conexão detectado. Isso pode indicar problema de CORS ou API inacessível.`, {
                 error: errorMessage,
-                configUrl: config?.url,
-                queryParams
+                companyId: resolvedCompanyId,
             });
         }
         
@@ -1673,6 +2185,377 @@ export const supportService = {
     }
     
     return details;
+  },
+
+  // Obter estatísticas da empresa (chamados concluídos, pedidos Cubbo)
+  getCompanyStats: async (companyId: string): Promise<{
+    completedTickets: number;
+    totalOrders: number;
+    shippedOrders: number;
+  }> => {
+    try {
+      // Buscar tickets concluídos da empresa
+      const allTickets = await supportService.getTickets(false, { companyId });
+      const companyTickets = allTickets.filter(t => 
+        t.companyId === companyId && 
+        (t.status === 'resolvido' || t.status === 'fechado')
+      );
+      
+      // Buscar informações da empresa (email do gestor, palavras-chave)
+      const { companyService } = await import('./companyService');
+      const company = await companyService.getCompany(companyId);
+      
+      // Buscar usuários da empresa para buscar pedidos
+      const { userService } = await import('./userService');
+      const companyUsers = await userService.getUsersByCompany(companyId);
+      const companyUserEmails = new Set(companyUsers.map(u => u.email.toLowerCase()));
+      
+      // Adicionar email do gestor se disponível
+      if (company?.managerEmail) {
+        companyUserEmails.add(company.managerEmail.toLowerCase());
+      }
+      
+      // Buscar pedidos da empresa via Cubbo API
+      let totalOrders = 0;
+      let shippedOrders = 0;
+      const allOrderEmails = new Set<string>();
+      
+      try {
+        // Buscar pedidos para cada email relacionado à empresa
+        for (const email of companyUserEmails) {
+          try {
+            const orders = await supportService.findOrdersByCustomer({ email });
+            orders.forEach(order => {
+              // Adicionar email do pedido para evitar duplicatas
+              const orderEmail = order.customer_email || order.shipping_email;
+              if (orderEmail && !allOrderEmails.has(`${order.id}-${orderEmail}`)) {
+                allOrderEmails.add(`${order.id}-${orderEmail}`);
+                totalOrders++;
+                if (order.status?.toLowerCase() === 'shipped' || 
+                    order.status?.toLowerCase() === 'delivered') {
+                  shippedOrders++;
+                }
+              }
+            });
+          } catch (error) {
+            console.error(`[getCompanyStats] Erro ao buscar pedidos para ${email}:`, error);
+            // Continuar para próximo email
+          }
+        }
+        
+        // Buscar pedidos relacionados às palavras-chave da empresa
+        // Buscar pedidos de clientes que têm pedidos fechados (delivered) da mesma organização
+        if (company?.keywords && company.keywords.length > 0) {
+          // Primeiro, coletar todos os emails de clientes com pedidos fechados
+          const closedOrderEmails = new Set<string>();
+          for (const email of companyUserEmails) {
+            try {
+              const orders = await supportService.findOrdersByCustomer({ email });
+              orders.forEach(order => {
+                if (order.status?.toLowerCase() === 'delivered') {
+                  const orderEmail = order.customer_email || order.shipping_email;
+                  if (orderEmail) {
+                    closedOrderEmails.add(orderEmail.toLowerCase());
+                  }
+                }
+              });
+            } catch (error) {
+              console.error(`[getCompanyStats] Erro ao buscar pedidos fechados para ${email}:`, error);
+            }
+          }
+          
+          // Buscar pedidos desses clientes que podem estar relacionados às palavras-chave
+          // Nota: A API Cubbo busca por email, então vamos buscar pedidos desses clientes
+          for (const email of closedOrderEmails) {
+            try {
+              const orders = await supportService.findOrdersByCustomer({ email });
+              orders.forEach(order => {
+                // Verificar se o pedido contém alguma palavra-chave da empresa
+                const orderData = JSON.stringify(order).toLowerCase();
+                const matchesKeyword = company.keywords.some(keyword => 
+                  orderData.includes(keyword.toLowerCase())
+                );
+                
+                if (matchesKeyword) {
+                  const orderKey = `${order.id}-${email}`;
+                  if (!allOrderEmails.has(orderKey)) {
+                    allOrderEmails.add(orderKey);
+                    totalOrders++;
+                    if (order.status?.toLowerCase() === 'shipped' || 
+                        order.status?.toLowerCase() === 'delivered') {
+                      shippedOrders++;
+                    }
+                  }
+                }
+              });
+            } catch (error) {
+              console.error(`[getCompanyStats] Erro ao buscar pedidos relacionados para ${email}:`, error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[getCompanyStats] Erro ao buscar pedidos Cubbo:', error);
+        // Não falhar se não conseguir buscar pedidos
+      }
+      
+      return {
+        completedTickets: companyTickets.length,
+        totalOrders,
+        shippedOrders,
+      };
+    } catch (error) {
+      console.error('[getCompanyStats] Erro ao calcular estatísticas da empresa:', error);
+      return {
+        completedTickets: 0,
+        totalOrders: 0,
+        shippedOrders: 0,
+      };
+    }
+  },
+
+  // Listar pedidos relacionados à empresa para o gestor
+  getCompanyOrders: async (
+    companyId: string,
+    options?: GetCompanyOrdersOptions
+  ): Promise<{ items: CubboOrder[]; total: number; page: number; pageSize: number; hasMore: boolean; fromCache: boolean; cacheExpiresAt?: number }> => {
+    const perfStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    console.log('[getCompanyOrders] Iniciando busca de pedidos para companyId:', companyId, {
+      options,
+    });
+    const forceRefresh = options?.forceRefresh ?? false;
+    const metrics: Record<string, any> = {
+      companyId,
+      usedCache: false,
+      forceRefresh,
+    };
+    const startTime = Date.now();
+    try {
+      const useCache = options?.useCache !== false;
+
+      console.log('[getCompanyOrders] Buscando dados da empresa...');
+      const company = await companyService.getCompany(companyId);
+      console.log('[getCompanyOrders] Empresa encontrada:', {
+        id: company?.id,
+        name: company?.name,
+        managerEmail: company?.managerEmail,
+        keywords: company?.keywords,
+        storeId: company?.storeId,
+      });
+
+      const allowedDomains = deriveAllowedDomains(company, options?.allowedCustomerDomains);
+      metrics.allowedDomains = allowedDomains;
+
+      const effectiveOptions: GetCompanyOrdersOptions = {
+        ...options,
+        allowedCustomerDomains: allowedDomains,
+      };
+
+      if (useCache && !forceRefresh) {
+        const cache = await orderCacheService.getCompanyCache(companyId);
+        if (cache && cache.orders && cache.orders.length > 0 && cache.expiresAt > Date.now()) {
+          metrics.usedCache = true;
+          metrics.cacheAgeMs = Date.now() - (cache.expiresAt - (effectiveOptions?.cacheTtlMs ?? COMPANY_CACHE_TTL_MS));
+          const filtered = filterCompanyOrders(cache.orders, effectiveOptions);
+          const pageSize =
+            effectiveOptions.pageSize && effectiveOptions.pageSize > 0 ? effectiveOptions.pageSize : filtered.length || 1;
+          const page = effectiveOptions.page && effectiveOptions.page > 0 ? effectiveOptions.page : 1;
+          const startIndex = (page - 1) * pageSize;
+          const slicedOrders = filtered.slice(startIndex, startIndex + pageSize);
+          const hasMore = startIndex + pageSize < filtered.length;
+          metrics.totalDurationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - perfStart;
+          console.log('[getCompanyOrders] Respondendo via cache', metrics);
+          return {
+            items: slicedOrders,
+            total: filtered.length,
+            page,
+            pageSize,
+            hasMore,
+            fromCache: true,
+            cacheExpiresAt: cache.expiresAt,
+          };
+        }
+      }
+
+      const fetchStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      console.log('[getCompanyOrders] Buscando usuários da empresa...');
+      const companyUsers = await userService.getUsersByCompany(companyId);
+      console.log('[getCompanyOrders] Usuários encontrados:', companyUsers.length);
+
+      const companyUserEmails = new Set(
+        companyUsers
+          .map(u => u.email?.toLowerCase())
+          .filter((email): email is string => Boolean(email))
+      );
+
+      if (company?.managerEmail) {
+        companyUserEmails.add(company.managerEmail.toLowerCase());
+      }
+
+      console.log('[getCompanyOrders] Emails para buscar pedidos:', {
+        totalEmails: companyUserEmails.size,
+        emails: Array.from(companyUserEmails),
+        managerEmail: company?.managerEmail
+      });
+
+      const ordersMap = new Map<string, CubboOrder>();
+
+      const isOrderAllowed = (order: CubboOrder, fallbackEmail?: string) =>
+        emailMatchesAllowedDomains(
+          order.customer_email || order.shipping_email || fallbackEmail,
+          allowedDomains
+        );
+
+      const addOrderToMap = (order: CubboOrder, fallbackEmail?: string) => {
+        if (!isOrderAllowed(order, fallbackEmail)) {
+          console.log('[getCompanyOrders] Pedido ignorado por domínio não autorizado', {
+            orderId: order.id,
+            orderNumber: order.order_number,
+            customerEmail: order.customer_email,
+            shippingEmail: order.shipping_email,
+            allowedDomains,
+          });
+          return;
+        }
+
+        const referenceEmail =
+          (order.customer_email || order.shipping_email || fallbackEmail || '').toLowerCase();
+        const key = order.id || `${order.order_number || 'unknown'}-${referenceEmail}`;
+        if (!ordersMap.has(key)) {
+          ordersMap.set(key, order);
+        }
+      };
+
+      const filterOrdersByDomain = (orders: CubboOrder[], fallbackEmail?: string) =>
+        allowedDomains.length > 0
+          ? orders.filter((order) => isOrderAllowed(order, fallbackEmail))
+          : orders;
+
+      const fetchAndStoreOrders = async (email: string): Promise<CubboOrder[]> => {
+        try {
+          console.log(`[getCompanyOrders] Buscando pedidos para email: ${email}`);
+          const orders = await supportService.findOrdersByCustomer({ email });
+          console.log(`[getCompanyOrders] Pedidos encontrados para ${email}:`, orders.length);
+          const allowedOrders = filterOrdersByDomain(orders, email);
+          if (orders.length !== allowedOrders.length) {
+            console.log('[getCompanyOrders] Pedidos removidos por domínio não permitido', {
+              email,
+              total: orders.length,
+              allowed: allowedOrders.length,
+              disallowed: orders.length - allowedOrders.length,
+            });
+          }
+          allowedOrders.forEach(order => addOrderToMap(order, email));
+          return allowedOrders;
+        } catch (error: any) {
+          console.error(`[getCompanyOrders] Erro ao buscar pedidos para ${email}:`, {
+            error: error?.message || 'Erro desconhecido',
+            stack: error?.stack,
+            email
+          });
+          return [];
+        }
+      };
+
+      const closedOrderEmails = new Set<string>();
+
+      // Buscar pedidos dos usuários da empresa
+      console.log('[getCompanyOrders] Iniciando busca de pedidos para usuários da empresa...');
+      for (const email of companyUserEmails) {
+        const orders = await fetchAndStoreOrders(email);
+        orders.forEach(order => {
+          const referenceEmail =
+            (order.customer_email || order.shipping_email || email).toLowerCase();
+          if (
+            order.status?.toLowerCase() === 'delivered' &&
+            emailMatchesAllowedDomains(referenceEmail, allowedDomains)
+          ) {
+            closedOrderEmails.add(referenceEmail);
+          }
+        });
+      }
+      console.log('[getCompanyOrders] Emails com pedidos entregues:', closedOrderEmails.size);
+
+      // Buscar pedidos relacionados às palavras-chave da empresa
+      if (company?.keywords && company.keywords.length > 0) {
+        console.log('[getCompanyOrders] Buscando pedidos relacionados às palavras-chave:', company.keywords);
+        for (const email of closedOrderEmails) {
+          try {
+            const keywordOrders = await supportService.findOrdersByCustomer({ email });
+            const allowedKeywordOrders = filterOrdersByDomain(keywordOrders, email);
+            allowedKeywordOrders.forEach(order => {
+              const orderData = JSON.stringify(order).toLowerCase();
+              const matchesKeyword = company.keywords!.some(keyword =>
+                orderData.includes(keyword.toLowerCase())
+              );
+              if (matchesKeyword) {
+                console.log(`[getCompanyOrders] Pedido ${order.order_number} corresponde à palavra-chave`);
+                addOrderToMap(order, email);
+              }
+            });
+          } catch (error: any) {
+            console.error(`[getCompanyOrders] Erro ao buscar pedidos relacionados para ${email}:`, {
+              error: error?.message || 'Erro desconhecido',
+              stack: error?.stack,
+              email
+            });
+          }
+        }
+      }
+
+      const finalOrders = Array.from(ordersMap.values()).sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      const filteredOrders = filterCompanyOrders(finalOrders, effectiveOptions);
+      const pageSize =
+        effectiveOptions.pageSize && effectiveOptions.pageSize > 0
+          ? effectiveOptions.pageSize
+          : filteredOrders.length || finalOrders.length || 1;
+      const page = effectiveOptions.page && effectiveOptions.page > 0 ? effectiveOptions.page : 1;
+      const startIndex = (page - 1) * pageSize;
+      const slicedOrders = filteredOrders.slice(startIndex, startIndex + pageSize);
+      const hasMore = startIndex + pageSize < filteredOrders.length;
+
+      await orderCacheService.setCompanyCache(companyId, filteredOrders, effectiveOptions?.cacheTtlMs);
+
+      const duration = Date.now() - startTime;
+      metrics.totalOrders = filteredOrders.length;
+      metrics.returnedOrders = slicedOrders.length;
+      metrics.remoteDurationMs =
+        typeof performance !== 'undefined' ? (performance.now() - fetchStart) : duration;
+      metrics.totalDurationMs =
+        typeof performance !== 'undefined' ? (performance.now() - perfStart) : duration;
+      console.log('[getCompanyOrders] Busca concluída:', metrics);
+
+      return {
+        items: slicedOrders,
+        total: filteredOrders.length,
+        page,
+        pageSize,
+        hasMore,
+        fromCache: false,
+        cacheExpiresAt: Date.now() + (effectiveOptions?.cacheTtlMs ?? COMPANY_CACHE_TTL_MS),
+      };
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.error('[getCompanyOrders] Erro ao coletar pedidos da empresa:', {
+        error: error?.message || 'Erro desconhecido',
+        stack: error?.stack,
+        companyId,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString()
+      });
+      return {
+        items: [],
+        total: 0,
+        page: options?.page || 1,
+        pageSize: options?.pageSize || 0,
+        hasMore: false,
+        fromCache: false,
+      };
+    }
   },
 
   searchFAQ: async (queryText: string): Promise<string> => {

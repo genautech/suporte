@@ -4,7 +4,7 @@ server {
     # NGINX irá escutar na porta definida pela variável de ambiente '$PORT'.
     # O Google Cloud Run injetará o valor correto (geralmente 8080) aqui.
     # A sintaxe ${PORT} é usada pelo utilitário 'envsubst' que configuramos no Dockerfile.
-    listen ${PORT};
+    listen $PORT;
 
     # Define a pasta raiz onde os arquivos da sua aplicação React estão dentro do contêiner.
     root /usr/share/nginx/html;

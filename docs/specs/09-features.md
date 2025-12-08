@@ -7,6 +7,57 @@
 
 Este documento descreve todas as funcionalidades principais do sistema de suporte.
 
+## 🔔 Central de Notificações
+
+- **Componentes:** `NotificationCenterProvider`, `NotificationBell`, `DashboardHeader`.  
+- **Escopos:** admin (toda a base), gestor (apenas empresa), usuário final (tickets/conversas do próprio email).  
+- **Eventos monitorados:**  
+  - Tickets (`listenToTicketNotifications` via `notificationService.ts`).  
+  - Conversas (`listenToConversationNotifications`).  
+  - Notificações exclusivas do gestor (`managerNotificationService.ts` → tipo `manager`).  
+- **Experiência do usuário:**  
+  - Badge com contador (limite 9+), botão “Marcar tudo como lido”, atalho para silenciar áudio.  
+  - Toasts + som `notification.wav` reproduzido somente se o usuário não estiver em mute.  
+  - Estados guardados no `localStorage` por escopo (lidos e mute).
+
+## 📣 Avisos e Banners
+
+- **AdminSupportNotices:** CRUD com editor WYSIWYG, filtros por empresa e flags de exibição (`Home`, `Área do cliente`).  
+- **CompanyNoticePanel:** permite que cada empresa cadastre avisos dirigidos (acessível dentro do cadastro de empresas).  
+- **SupportNoticeBanner:**  
+  - Renderizado no `HomePage` (antes do login) e no `SupportArea` (após login).  
+  - Mostra número de avisos, botão de recolher e atalho para o sino de notificações.  
+  - Cards exibem título, resumo (HTML sanitizado), locais onde o aviso aparece e, opcionalmente, botão “Detalhes”.  
+- **Serviço:** `supportNoticeService` filtra avisos por empresa/alvo (`home`, `support`, `all`), aplica ordenação por `updatedAt` e suporta escuta em tempo real.
+
+## 🧠 Biblioteca de Respostas Padrão
+
+- **AdminDefaultResponses:** grid com filtros por empresa, busca por texto/keywords, indicador de uso e ações de editar/desativar.  
+- **Fluxo de criação:** seleciona empresa → pergunta → resposta → keywords → categoria → flags “Incluir no aprendizado (Knowledge Base)” e “Incluir no aprendizado automático”.  
+- **Serviço:** `defaultResponseService` mantém:  
+  - Normalização de perguntas (`normalizeQuestion`).  
+  - Similaridade por palavras-chave (`findMatchingResponse`).  
+  - `usageCount` com `incrementUsage`.  
+- **Integração com o Gemini:** quando `includeInLearning` está ativo, a resposta é automaticamente inserida na base de conhecimento (verificada) para treinar o modelo.
+
+## 🚨 Escalonamento e Painel do Gestor
+
+- **ManagerDashboard:**  
+  - Abas: Dashboard, Perfil, Tickets, Orders, Escalations, FAQ, Knowledge.  
+  - OrderCelebration com animação (`framer-motion`) e resumo de pedidos mais recentes.  
+  - Modal para abrir escalonamentos diretamente da lista de pedidos.  
+  - Preferências de notificação (canais, tópicos) + timezone.  
+- **Manager Escalations:**  
+  - Criadas via `managerEscalationService` (criando ticket + registro em `managerEscalations`).  
+  - Status sincronizado com o ticket e com notificações do gestor (`managerNotificationService`).  
+  - Lista paginada/filtrada por status ou busca textual.  
+- **Perfis do gestor:** `managerProfileService` garante consistência entre coleção `managerProfiles` e cadastro da empresa (sincroniza email/nome, provisiona/revoga acesso).
+
+## 🎉 Order Celebration & Cache
+
+- **OrderCelebration.tsx:** destaca o pedido mais recente + últimos três eventos, com indicadores de valor/tempo desde a criação.  
+- **orderCacheService.ts:** salva snapshots de pedidos por empresa (`companyOrdersCache`) com TTL de 5 minutos e máximo de 50 itens, reduzindo a dependência direta da API Cubbo durante a navegação do gestor.
+
 ## 🔍 Busca e Visualização de Pedidos
 
 ### Para Usuários

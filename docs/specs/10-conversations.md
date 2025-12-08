@@ -282,3 +282,10 @@ O componente `Chatbot` integra todo o sistema:
 - Contador de tentativas sem resolução
 - Contexto enriquecido para Gemini
 
+
+
+
+
+
+
+

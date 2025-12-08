@@ -1,14 +1,19 @@
 // UserLogin component with email code-based authentication
 import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import { auth } from '../firebase';
 import { 
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword
 } from 'firebase/auth';
 import { generateAuthCode, validateAuthCode, sendAuthCodeEmail, resetPasswordWithCode } from '../services/authService';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 
 interface UserLoginProps {
-    onBackToHome: () => void;
+    onBackToHome?: () => void;
 }
 
 export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
@@ -67,7 +72,10 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
     const handleVerifyCode = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (authCode.length !== 4) {
+        // Normalizar código: remover espaços e caracteres não numéricos, manter apenas dígitos
+        const normalizedCode = authCode.replace(/\D/g, '');
+        
+        if (normalizedCode.length !== 4) {
             setError('O código deve ter 4 dígitos.');
             return;
         }
@@ -76,19 +84,30 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
         setError('');
         
         try {
+            // Normalizar email também
+            const normalizedEmail = email.toLowerCase().trim();
+            
+            console.log('[handleVerifyCode] Validating code:', {
+                email: normalizedEmail,
+                codeLength: normalizedCode.length,
+                code: normalizedCode.replace(/\d/g, '*') // Log mascarado para segurança
+            });
+            
             // Validate code first (don't mark as used yet - we'll mark it after successful auth)
-            const isValid = await validateAuthCode(email, authCode, false);
+            const isValid = await validateAuthCode(normalizedEmail, normalizedCode, false);
             
             if (!isValid) {
+                console.error('[handleVerifyCode] Code validation failed');
                 setError('Código inválido ou expirado. Solicite um novo código.');
                 setIsLoading(false);
                 return;
             }
             
+            console.log('[handleVerifyCode] Code validated successfully');
+            
             // Code is valid, now authenticate with Firebase
             // Generate a deterministic password based on email (user doesn't need to know it)
             // This ensures the same password is used every time for the same email
-            const normalizedEmail = email.toLowerCase().trim();
             const tempPassword = `temp_${normalizedEmail}_${normalizedEmail.length}_2025!`;
             
             // Strategy: Try to create user first (if doesn't exist), then sign in
@@ -99,7 +118,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                 await createUserWithEmailAndPassword(auth, normalizedEmail, tempPassword);
                 console.log('[handleVerifyCode] User created successfully');
                 // Mark code as used after successful authentication
-                await validateAuthCode(email, authCode, true);
+                await validateAuthCode(normalizedEmail, normalizedCode, true);
                 // User created, authentication successful - onAuthStateChanged will handle redirect
                 setError('');
                 return;
@@ -113,7 +132,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                         await signInWithEmailAndPassword(auth, normalizedEmail, tempPassword);
                         console.log('[handleVerifyCode] Sign in successful');
                         // Mark code as used after successful authentication
-                        await validateAuthCode(email, authCode, true);
+                        await validateAuthCode(normalizedEmail, normalizedCode, true);
                         // Authentication successful - onAuthStateChanged will handle redirect
                         setError('');
                         return;
@@ -127,7 +146,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                             
                             try {
                                 // Reset password using backend service (code is already validated)
-                                const resetResult = await resetPasswordWithCode(normalizedEmail, authCode);
+                                const resetResult = await resetPasswordWithCode(normalizedEmail, normalizedCode);
                                 
                                 if (resetResult.success) {
                                     console.log('[handleVerifyCode] Password reset successful, attempting sign in...');
@@ -135,7 +154,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                                     await signInWithEmailAndPassword(auth, normalizedEmail, tempPassword);
                                     console.log('[handleVerifyCode] Sign in successful after password reset');
                                     // Mark code as used after successful authentication
-                                    await validateAuthCode(email, authCode, true);
+                                    await validateAuthCode(normalizedEmail, normalizedCode, true);
                                     setError('');
                                     return;
                                 } else {
@@ -160,7 +179,7 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                         await signInWithEmailAndPassword(auth, normalizedEmail, tempPassword);
                         console.log('[handleVerifyCode] Sign in successful (fallback)');
                         // Mark code as used after successful authentication
-                        await validateAuthCode(email, authCode, true);
+                        await validateAuthCode(normalizedEmail, normalizedCode, true);
                         setError('');
                         return;
                     } catch (signInError: any) {
@@ -200,49 +219,51 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
     };
 
     return (
-        <>
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-                <div className="card-standard w-full max-w-md">
-                    <div className="text-center mb-6">
-                        <div className="text-4xl mb-4">🔐</div>
-                        <h1 className="text-2xl font-bold text-gray-900 mb-2">
+        <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10 flex items-center justify-center p-4">
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="w-full max-w-md"
+            >
+                <Card className="shadow-xl border-border/60">
+                    <CardHeader className="text-center space-y-2">
+                        <div className="text-5xl mb-2">🔐</div>
+                        <CardTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
                             Acesso ao Suporte
-                        </h1>
-                        <p className="text-sm text-gray-600">
+                        </CardTitle>
+                        <CardDescription className="text-base">
                             Digite seu e-mail para receber um código de acesso
-                        </p>
-                    </div>
-                    
-                    {error && (
-                        <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700">
-                            <span>{error}</span>
-                        </div>
-                    )}
-
-                    {!codeSent ? (
-                        <form className="space-y-4" onSubmit={handleSendCode}>
-                            <div>
-                                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                                    Seu E-mail
-                                </label>
-                                <input 
-                                    id="email" 
-                                    name="email" 
-                                    type="email" 
-                                    autoComplete="email" 
-                                    required 
-                                    value={email} 
-                                    onChange={(e) => setEmail(e.target.value)} 
-                                    className="input-standard" 
-                                    placeholder="seu@email.com"
-                                    disabled={isLoading}
-                                />
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                        {error && (
+                            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                                {error}
                             </div>
-                            <div className="mt-6">
-                                <button type="submit" disabled={isLoading} className="btn-standard-primary w-full py-3">
+                        )}
+
+                        {!codeSent ? (
+                            <form className="space-y-4" onSubmit={handleSendCode}>
+                                <div className="space-y-2">
+                                    <Label htmlFor="email">Seu e-mail</Label>
+                                    <Input
+                                        id="email"
+                                        name="email"
+                                        type="email"
+                                        autoComplete="email"
+                                        required
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        placeholder="seu@email.com"
+                                        disabled={isLoading}
+                                        className="h-12 text-base"
+                                    />
+                                </div>
+                                <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
                                     {isLoading ? (
                                         <>
-                                            <span className="loading loading-spinner loading-sm mr-2"></span>
+                                            <span className="loading loading-spinner loading-sm mr-2" />
                                             Enviando...
                                         </>
                                     ) : (
@@ -251,83 +272,80 @@ export const UserLogin: React.FC<UserLoginProps> = ({ onBackToHome }) => {
                                             Enviar Código de Acesso
                                         </>
                                     )}
-                                </button>
-                            </div>
-                        </form>
-                    ) : (
-                        <div className="space-y-4">
-                            <div className="p-4 bg-green-50 border border-green-200 text-green-800">
-                                <div className="flex items-start">
-                                    <span className="text-xl mr-3">✅</span>
-                                    <div>
-                                        <h3 className="font-bold mb-1">Código Enviado!</h3>
-                                        <p className="text-sm mb-1">Verifique seu e-mail e digite o código de 4 dígitos recebido.</p>
-                                        <p className="text-xs text-green-700">O código expira em 5 minutos.</p>
+                                </Button>
+                            </form>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+                                    <div className="font-semibold mb-1">Código enviado!</div>
+                                    <p className="text-muted-foreground text-xs">
+                                        Verifique seu e-mail e digite o código de 4 dígitos recebido. O código expira em 5 minutos.
+                                    </p>
+                                </div>
+
+                                <form className="space-y-4" onSubmit={handleVerifyCode}>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="authCode">Código de 4 dígitos</Label>
+                                        <Input
+                                            id="authCode"
+                                            name="authCode"
+                                            type="text"
+                                            maxLength={4}
+                                            required
+                                            value={authCode}
+                                            onChange={(e) => setAuthCode(e.target.value.replace(/\D/g, ''))}
+                                            className="text-center text-2xl tracking-[0.4em] font-mono h-12"
+                                            placeholder="0000"
+                                            autoFocus
+                                            disabled={isLoading}
+                                        />
                                     </div>
-                                </div>
-                            </div>
-                            <form className="space-y-4" onSubmit={handleVerifyCode}>
-                                <div>
-                                    <label htmlFor="authCode" className="block text-sm font-medium text-gray-700 mb-2">
-                                        Código de 4 dígitos
-                                    </label>
-                                    <input 
-                                        id="authCode" 
-                                        name="authCode" 
-                                        type="text" 
-                                        maxLength={4} 
-                                        required 
-                                        value={authCode} 
-                                        onChange={(e) => setAuthCode(e.target.value.replace(/\D/g, ''))} 
-                                        className="input-standard text-center text-2xl tracking-widest font-mono" 
-                                        placeholder="0000"
-                                        autoFocus
-                                        disabled={isLoading}
-                                    />
-                                </div>
-                                <div className="mt-6">
-                                    <button 
-                                        type="submit" 
-                                        disabled={isLoading || authCode.length !== 4} 
-                                        className="btn-standard-primary w-full py-3"
+                                    <Button
+                                        type="submit"
+                                        size="lg"
+                                        className="w-full"
+                                        disabled={isLoading || authCode.length !== 4}
                                     >
                                         {isLoading ? (
                                             <>
-                                                <span className="loading loading-spinner loading-sm mr-2"></span>
+                                                <span className="loading loading-spinner loading-sm mr-2" />
                                                 Verificando...
                                             </>
                                         ) : (
                                             'Verificar e Acessar'
                                         )}
-                                    </button>
-                                </div>
-                                <div className="text-center">
-                                    <button 
-                                        type="button" 
-                                        onClick={handleResendCode} 
-                                        className="text-sm text-blue-600 hover:text-blue-700"
-                                        disabled={isLoading}
-                                    >
-                                        ↻ Reenviar código
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    )}
-
-                    <div className="mt-6 pt-6 border-t border-gray-200">
-                        <div className="text-center">
-                            <button 
-                                onClick={onBackToHome} 
-                                className="btn-standard w-full text-sm"
-                                disabled={isLoading}
-                            >
-                                ← Voltar para a página inicial
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </>
+                                    </Button>
+                                    <div className="text-center">
+                                        <Button
+                                            type="button"
+                                            variant="link"
+                                            className="text-sm"
+                                            disabled={isLoading}
+                                            onClick={handleResendCode}
+                                        >
+                                            ↻ Reenviar código
+                                        </Button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
+                        
+                        {onBackToHome && (
+                            <div className="text-center pt-4 border-t border-border">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="text-sm"
+                                    disabled={isLoading}
+                                    onClick={onBackToHome}
+                                >
+                                    ← Voltar para página inicial
+                                </Button>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </motion.div>
+        </div>
     );
 };

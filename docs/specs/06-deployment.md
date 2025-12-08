@@ -1,7 +1,8 @@
 # 🚀 Especificação de Deployment
 
-**Última Atualização:** 2025-11-07  
-**Status:** ✅ Ativo
+**Última Atualização:** 2025-01-XX  
+**Status:** ✅ Ativo  
+**Versão:** v1.7.0+
 
 ## 📋 Visão Geral
 
@@ -224,7 +225,26 @@ gcloud run deploy cubbo-auth-proxy \
 
 ## 🔄 Processo de Deploy
 
-### 1. Preparação
+### Deploy Automático (Recomendado)
+
+Para a aplicação principal, use os scripts automatizados:
+
+```bash
+# Deploy completo com validações
+./deploy-auto.sh
+
+# Deploy padrão (build + deploy + git)
+./deploy.sh
+
+# Deploy rápido (usando imagem existente)
+./deploy-quick.sh
+```
+
+**📚 Veja [DEPLOY.md](../../DEPLOY.md) para documentação completa.**
+
+### Deploy Manual
+
+#### 1. Preparação
 
 ```bash
 # Verificar projeto atual
@@ -237,14 +257,14 @@ gcloud auth list
 cd cubbo-auth-proxy  # ou postmark-email-proxy ou raiz
 ```
 
-### 2. Deploy
+#### 2. Deploy
 
 ```bash
 # Executar comando de deploy apropriado
 # (ver seções acima)
 ```
 
-### 3. Verificação
+#### 3. Verificação
 
 ```bash
 # Testar URL do serviço

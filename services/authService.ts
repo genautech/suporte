@@ -8,6 +8,8 @@ import {
   getDocs,
   updateDoc,
   doc,
+  getDoc,
+  setDoc,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -52,7 +54,15 @@ export const generateAuthCode = async (email: string): Promise<string> => {
  */
 export const validateAuthCode = async (email: string, code: string, markAsUsed: boolean = true): Promise<boolean> => {
   const normalizedEmail = email.toLowerCase().trim();
-  const normalizedCode = code.trim();
+  // Normalizar código: remover espaços e caracteres não numéricos, manter apenas dígitos
+  const normalizedCode = code.replace(/\D/g, '').trim();
+  
+  console.log('[validateAuthCode] Validating:', {
+    email: normalizedEmail,
+    codeLength: normalizedCode.length,
+    codeMasked: normalizedCode.replace(/\d/g, '*'),
+    markAsUsed
+  });
   
   // Find the code document
   const q = query(
@@ -62,9 +72,23 @@ export const validateAuthCode = async (email: string, code: string, markAsUsed: 
     where('used', '==', false)
   );
   
-  const querySnapshot = await getDocs(q);
+  let querySnapshot;
+  try {
+    querySnapshot = await getDocs(q);
+  } catch (error: any) {
+    console.error('[validateAuthCode] Firestore query error:', error);
+    // Se for erro de permissão, retornar false mas logar o erro
+    if (error.code === 'permission-denied') {
+      console.error('[validateAuthCode] Permission denied - check Firestore rules');
+    }
+    return false;
+  }
   
   if (querySnapshot.empty) {
+    console.warn('[validateAuthCode] No matching code found:', {
+      email: normalizedEmail,
+      codeLength: normalizedCode.length
+    });
     return false;
   }
   
@@ -75,19 +99,37 @@ export const validateAuthCode = async (email: string, code: string, markAsUsed: 
   const expiresAt = (codeData.expiresAt as Timestamp).toDate();
   const now = new Date();
   
+  console.log('[validateAuthCode] Code found, checking expiration:', {
+    expiresAt: expiresAt.toISOString(),
+    now: now.toISOString(),
+    expired: now > expiresAt
+  });
+  
   if (now > expiresAt) {
+    console.warn('[validateAuthCode] Code expired');
     // Code expired, mark as used anyway
     if (markAsUsed) {
-      await updateDoc(doc(db, 'authCodes', codeDoc.id), { used: true });
+      try {
+        await updateDoc(doc(db, 'authCodes', codeDoc.id), { used: true });
+      } catch (error) {
+        console.error('[validateAuthCode] Error marking expired code as used:', error);
+      }
     }
     return false;
   }
   
   // Mark code as used only if requested
   if (markAsUsed) {
-    await updateDoc(doc(db, 'authCodes', codeDoc.id), { used: true });
+    try {
+      await updateDoc(doc(db, 'authCodes', codeDoc.id), { used: true });
+      console.log('[validateAuthCode] Code marked as used');
+    } catch (error) {
+      console.error('[validateAuthCode] Error marking code as used:', error);
+      // Não falhar a validação se não conseguir marcar como usado
+    }
   }
   
+  console.log('[validateAuthCode] Code validated successfully');
   return true;
 };
 
@@ -158,11 +200,168 @@ export const resetPasswordWithCode = async (email: string, code: string): Promis
     };
   }
 };
+
+/**
+ * Sets manager password directly using admin endpoint (no code required)
+ * This uses Firebase Admin SDK on the backend to set password
+ */
+export const setManagerPassword = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  // Use production URL by default (proxy is deployed and working)
+  // Can override with VITE_AUTH_RESET_PROXY_URL env var if needed
+  const RESET_PROXY_URL = import.meta.env.VITE_AUTH_RESET_PROXY_URL || 'https://firebase-auth-reset-proxy-409489811769.southamerica-east1.run.app';
+  
+  try {
+    const response = await fetch(`${RESET_PROXY_URL}/admin/set-password`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    });
+    
+    const responseText = await response.text();
+    
+    if (!response.ok) {
+      let errorBody;
+      try {
+        errorBody = JSON.parse(responseText);
+      } catch (e) {
+        errorBody = { error: responseText || `HTTP ${response.status}` };
+      }
+      return { 
+        success: false, 
+        error: errorBody.error || 'Falha ao definir senha.' 
+      };
+    }
+    
+    const responseData = JSON.parse(responseText);
+    return { success: true };
+  } catch (error: any) {
+    console.error("[setManagerPassword] Erro ao definir senha:", error);
+    return { 
+      success: false, 
+      error: error.message || 'Erro desconhecido ao definir senha.' 
+    };
+  }
+};
+
+// User roles and permissions management
+const userRolesCollection = collection(db, 'userRoles');
+
+/**
+ * Gets user role from Firestore
+ */
+export const getUserRole = async (email: string): Promise<'admin' | 'manager' | 'client'> => {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Check if admin@yoobe.co (hardcoded admin for backward compatibility)
+    if (normalizedEmail === 'admin@yoobe.co') {
+      return 'admin';
+    }
+    
+    const docRef = doc(db, 'userRoles', normalizedEmail);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return data.role || 'client';
+    }
+    
+    return 'client'; // Default role
+  } catch (error) {
+    console.error('Error getting user role:', error);
+    return 'client'; // Safe fallback
+  }
+};
+
+/**
+ * Checks if user is admin
+ */
+export const isAdmin = async (email: string): Promise<boolean> => {
+  const role = await getUserRole(email);
+  return role === 'admin';
+};
+
+/**
+ * Checks if user is manager
+ */
+export const isManager = async (email: string): Promise<boolean> => {
+  const role = await getUserRole(email);
+  return role === 'manager';
+};
+
+/**
+ * Gets manager's company ID
+ */
+export const getManagerCompany = async (email: string): Promise<string | null> => {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    const docRef = doc(db, 'userRoles', normalizedEmail);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.role === 'manager' && data.companyId) {
+        return data.companyId;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting manager company:', error);
+    return null;
+  }
+};
+
+/**
+ * Grants manager access to a user
+ */
+export const grantManagerAccess = async (email: string, companyId: string): Promise<void> => {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    const docRef = doc(db, 'userRoles', normalizedEmail);
+    
+    await setDoc(docRef, {
+      email: normalizedEmail,
+      role: 'manager',
+      companyId,
+      createdAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error granting manager access:', error);
+    throw error;
+  }
+};
+
+/**
+ * Revokes manager access
+ */
+export const revokeManagerAccess = async (email: string): Promise<void> => {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    const docRef = doc(db, 'userRoles', normalizedEmail);
+    
+    // Update role to client or delete if needed
+    await updateDoc(docRef, {
+      role: 'client',
+      companyId: null,
+    });
+  } catch (error) {
+    console.error('Error revoking manager access:', error);
+    throw error;
+  }
+};
+
 export const sendAuthCodeEmail = async (email: string, code: string): Promise<{ success: boolean; error?: string }> => {
   const EMAIL_PROXY_URL = ((import.meta as any).env?.VITE_POSTMARK_PROXY_URL as string) || 
     'https://postmark-email-proxy-409489811769.southamerica-east1.run.app';
   
-  const subject = 'Seu código de acesso - Portal de Suporte';
+  const subject = 'Seu código de acesso - Portal de Suporte Loja Corporativa';
   const htmlBody = `
     <!DOCTYPE html>
     <html>
@@ -208,7 +407,7 @@ export const sendAuthCodeEmail = async (email: string, code: string): Promise<{ 
     </head>
     <body>
       <h2>Olá!</h2>
-      <p>Você solicitou acesso ao Portal de Suporte. Use o código abaixo para fazer login:</p>
+      <p>Você solicitou acesso ao Portal de Suporte Loja Corporativa. Use o código abaixo para fazer login:</p>
       
       <div class="code-container">
         <div class="code">${code}</div>
@@ -221,7 +420,7 @@ export const sendAuthCodeEmail = async (email: string, code: string): Promise<{ 
       <p>Se você não solicitou este código, pode ignorar este e-mail com segurança.</p>
       
       <div class="footer">
-        <p>Portal de Suporte - Suporte Lojinha Prio</p>
+        <p>Portal de Suporte Loja Corporativa</p>
         <p>Este é um e-mail automático, por favor não responda.</p>
       </div>
     </body>

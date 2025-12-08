@@ -4,17 +4,46 @@ import { ExchangeFormData } from '../types';
 
 interface ExchangeFormProps {
   orderId?: string;
+  userEmail?: string; // Email do usuário logado para preencher automaticamente
+  userName?: string; // Nome do usuário logado para preencher automaticamente
+  userPhone?: string; // Telefone do usuário logado para preencher automaticamente
   onSubmit: (data: ExchangeFormData) => void;
   onClose: () => void;
 }
 
-export const ExchangeForm: React.FC<ExchangeFormProps> = ({ orderId = '', onSubmit, onClose }) => {
+export const ExchangeForm: React.FC<ExchangeFormProps> = ({ orderId = '', userEmail = '', userName = '', userPhone = '', onSubmit, onClose }) => {
   const [formData, setFormData] = useState<ExchangeFormData>({
     orderId: orderId,
-    name: '',
-    email: '',
+    name: userName || '',
+    email: userEmail || '',
     reason: '',
   });
+  
+  // Atualizar email quando userEmail mudar (apenas se campo estiver vazio)
+  React.useEffect(() => {
+    if (userEmail && userEmail.trim()) {
+      setFormData(prev => {
+        // Só atualizar se o campo estiver vazio
+        if (!prev.email || !prev.email.trim()) {
+          return { ...prev, email: userEmail.trim() };
+        }
+        return prev;
+      });
+    }
+  }, [userEmail]);
+  
+  // Atualizar nome quando userName mudar (apenas se campo estiver vazio)
+  React.useEffect(() => {
+    if (userName && userName.trim()) {
+      setFormData(prev => {
+        // Só atualizar se o campo estiver vazio
+        if (!prev.name || !prev.name.trim()) {
+          return { ...prev, name: userName.trim() };
+        }
+        return prev;
+      });
+    }
+  }, [userName]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

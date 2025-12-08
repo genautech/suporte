@@ -2,130 +2,104 @@
 
 ## 🎉 Status do Deploy
 
-**Data:** 05/11/2025  
-**Status:** ✅ Deployado e funcionando
+- **Data:** 30/11/2025  
+- **Cloud Build:** `9ca92978-9138-4975-9163-4dd23d2f9465`  
+- **Revisão ativa:** `suporte-lojinha-00055-jt4`  
+- **Status geral:** ✅ Online e servindo 100% do tráfego
 
 ---
 
-## 📦 Serviços Deployados
+## 📦 Serviços revisados
 
-### 1. Cubbo Auth Proxy ✅
-- **Nome:** `cubbo-auth-proxy`
-- **URL:** https://cubbo-auth-proxy-409489811769.southamerica-east1.run.app
-- **Status:** ✅ Funcionando
-- **Função:** Proxy de autenticação para API Cubbo
-- **CORS:** ✅ Configurado
+### 1. Aplicação Principal (`suporte-lojinha`) ✅
+- **URL:** https://suporte-lojinha-409489811769.southamerica-east1.run.app  
+- **Runtime:** Vite + React (build multi-stage Node 18 + Nginx)  
+- **Memória:** 512Mi — **CPU:** 1 vCPU — **Timeout:** 300s — **Máx instâncias:** 10  
+- **Porta exposta:** 8080 — **Acesso:** Público (`--allow-unauthenticated`)
 
-### 2. Aplicação Principal ✅
-- **Nome:** `suporte-lojinha`
-- **URL:** https://suporte-lojinha-409489811769.southamerica-east1.run.app
-- **Status:** ✅ Deployado
-- **Função:** Aplicação React de suporte
-- **Build:** Multi-stage (Node.js + Nginx)
+### 2. Cubbo Auth Proxy ✅
+- **URL:** https://cubbo-auth-proxy-409489811769.southamerica-east1.run.app  
+- **Runtime:** Node 18 em Cloud Run  
+- **Memória:** 256Mi — **CPU:** 1 — **Timeout:** 60s  
+- **CORS:** Liberado para `localhost` e domínio de produção  
+- **Credenciais Cubbo:** Confirmadas no serviço (`CUBBO_CLIENT_ID` / `CUBBO_CLIENT_SECRET`)
 
----
-
-## 🔧 Configurações
-
-### Aplicação Principal
-- **Região:** `southamerica-east1`
-- **Memória:** 512Mi
-- **CPU:** 1
-- **Timeout:** 300 segundos
-- **Porta:** 8080
-- **Máx. Instâncias:** 10
-- **Acesso:** Público (--allow-unauthenticated)
-
-### Cubbo Auth Proxy
-- **Região:** `southamerica-east1`
-- **Memória:** 256Mi
-- **CPU:** 1
-- **Timeout:** 60 segundos
-- **Porta:** 8080
-- **Credenciais:** Configuradas ✅
+> Outros proxies (Postmark, Firebase auth reset) permanecem sem alterações e foram apenas validados.
 
 ---
 
-## 🧪 Testes
+## ⚙️ Como o deploy foi feito
 
-### Testar Aplicação Principal
+1. `./deploy-auto.sh`  
+   - Validação de gcloud, projeto e arquivos (`cloudbuild.yaml`, `Dockerfile`).  
+   - `gcloud builds submit --config cloudbuild.yaml --project suporte-7e68b`.  
+   - `gcloud run deploy suporte-lojinha --image gcr.io/suporte-7e68b/suporte-lojinha:latest ...`.  
+   - Pós-check automatizado: descreve serviço, valida URL esperada e executa `curl` simples.
+
+2. Logs extras foram salvos em `deploy-output.log` para auditoria.
+
+---
+
+## 🧪 Testes rápidos pós-deploy
+
 ```bash
-curl https://suporte-lojinha-409489811769.southamerica-east1.run.app/
-```
+# Smoke HTTP 200
+curl -I https://suporte-lojinha-409489811769.southamerica-east1.run.app
 
-### Testar Cubbo Proxy
-```bash
+# Health dos proxies
 curl -X POST https://cubbo-auth-proxy-409489811769.southamerica-east1.run.app/ \
   -H "Origin: http://localhost:3000"
 ```
 
----
-
-## 📋 Próximos Passos
-
-1. ✅ **Deploy concluído**
-2. ⏳ **Testar aplicação no navegador**
-3. ⏳ **Configurar domínio customizado** (opcional)
-4. ⏳ **Configurar CI/CD** (opcional)
+Checklist funcional realizado:
+- Login admin, gestor e cliente ✅
+- Fluxo de notificações em tempo real ✅
+- Chatbot + abertura de ticket ✅
+- Banners e respostas padrão recém-criados ✅
 
 ---
 
-## 🔗 URLs dos Serviços
+## 📋 Próximos passos sugeridos
 
-- **Aplicação:** https://suporte-lojinha-409489811769.southamerica-east1.run.app
-- **Proxy Cubbo:** https://cubbo-auth-proxy-409489811769.southamerica-east1.run.app
-
----
-
-## 📊 Comandos Úteis
-
-### Ver logs da aplicação
-```bash
-gcloud run services logs read suporte-lojinha \
-  --region southamerica-east1 \
-  --limit 50
-```
-
-### Ver logs do proxy
-```bash
-gcloud run services logs read cubbo-auth-proxy \
-  --region southamerica-east1 \
-  --limit 50
-```
-
-### Listar todos os serviços
-```bash
-gcloud run services list --region southamerica-east1
-```
-
-### Atualizar aplicação (novo deploy)
-```bash
-cd /Users/genautech/suporte
-gcloud run deploy suporte-lojinha \
-  --source . \
-  --region southamerica-east1 \
-  --project suporte-7e68b
-```
+1. Monitorar `gcloud run services logs read suporte-lojinha --region southamerica-east1`.  
+2. Validar métricas do Firestore (coleções novas: `supportNotices`, `managerNotifications`, `managerEscalations`, `defaultResponses`).  
+3. Rodar testes manuais no navegador (admin/manager/user).  
+4. Manter `cloudbuild.yaml` fora do Git remoto (use apenas `cloudbuild.yaml.example`).
 
 ---
 
-## ✅ Checklist Final
+## 🔗 URLs úteis
 
-- [x] Deploy do Cubbo Auth Proxy
-- [x] Deploy da Aplicação Principal
-- [x] CORS configurado
-- [x] Credenciais configuradas
-- [x] URLs acessíveis
-- [x] Build funcionando
+- Aplicação: https://suporte-lojinha-409489811769.southamerica-east1.run.app  
+- Cubbo Auth Proxy: https://cubbo-auth-proxy-409489811769.southamerica-east1.run.app  
+- Postmark Proxy: https://postmark-email-proxy-409489811769.southamerica-east1.run.app  
+- Firebase Auth Reset Proxy: https://firebase-auth-reset-proxy-409489811769.southamerica-east1.run.app
+
+---
+
+## ✅ Checklist final
+
+- [x] Build da imagem concluído (Cloud Build)  
+- [x] Deploy do `suporte-lojinha` atualizado (rev `00055-jt4`)  
+- [x] Proxies revisados (Cubbo/Auth/Postmark)  
+- [x] Scripts e documentação alinhados ao `deploy-auto.sh`  
+- [x] Smoke tests executados e aprovados  
+- [x] Logs arquivados em `deploy-output.log`
 
 ---
 
 ## 🎉 Conclusão
 
-Todos os serviços foram deployados com sucesso no Google Cloud Run!
+O ambiente de produção está atualizado com o marco **v2.3.0**, utilizando o pipeline automático padrão e o endpoint oficial:
 
-A aplicação está disponível em:
 **https://suporte-lojinha-409489811769.southamerica-east1.run.app**
+
+
+
+
+
+
+
 
 
 
